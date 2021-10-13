@@ -6,7 +6,8 @@ import (
 	"net/http"
 
 	"github.com/Harsha-S2604/genz-server/models/users"
-	"github.com/Harsha-S2604/genz-server/validations"
+	"github.com/Harsha-S2604/genz-server/utilities/validations"
+	"github.com/Harsha-S2604/genz-server/utilities/hashing"
 	"github.com/gin-gonic/gin"
 )
 
@@ -21,7 +22,7 @@ func ValidateUserLoginHandler(genzDB *sql.DB) gin.HandlerFunc {
 		user := new(users.User);
 		resultsCount := 0
 		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
-		
+
 		if !ok {
 			log.Println("Token not exists")
 			ctx.JSON(http.StatusUnauthorized, gin.H{
@@ -46,7 +47,8 @@ func ValidateUserLoginHandler(genzDB *sql.DB) gin.HandlerFunc {
 		ctx.ShouldBindJSON(&userFromRequest)
 
 		isValidEmail, err := validations.ValidateUserEmail(userFromRequest.Email)
-
+		hashedPassword := hashing.HashUserPassword(userFromRequest.Password)
+		log.Println("Hashedpassword", hashedPassword)
 		if err != nil {
 			log.Println("ERROR Function ValidateUserLogin: ", err.Error(), userFromRequest.Email)
 			ctx.JSON(http.StatusOK, gin.H{
@@ -97,7 +99,7 @@ func ValidateUserLoginHandler(genzDB *sql.DB) gin.HandlerFunc {
 			})
 		} else {
 			// check if user credentials match or not and send appropriate messages
-			if user.Email == userFromRequest.Email && user.Password == userFromRequest.Password {
+			if user.Email == userFromRequest.Email && user.Password == hashedPassword {
 				var userData users.User
 				log.Println("User credentials match",userFromRequest.Email)
 				loggedinUser, qryMatchErr := genzDB.Query("SELECT user_id, name, email, is_email_verified FROM users WHERE email = ?;", userFromRequest.Email)
