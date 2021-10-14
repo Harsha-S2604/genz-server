@@ -3,7 +3,7 @@ package users
 // use promoted fields if possible
 type User struct {
 	UserId 			string `json: "userId"`
-	Name			string `json: "email"`
+	Name			string `json: "name"`
 	Email 			string `json: "email"`
 	Password 		string `json: "password"`
 	IsEmailVerified bool   `json: "isEmailVerified"`

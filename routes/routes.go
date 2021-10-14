@@ -22,6 +22,10 @@ func SetupRouter(genzDB *sql.DB) *gin.Engine{
 	{
 		// validate user login
 		userAPIRouter.POST("/login", userService.ValidateUserLoginHandler(genzDB))
+
+		// register user
+		userAPIRouter.POST("/register", userService.UserRegisterHandler(genzDB))
+
 	}
 
 	return router

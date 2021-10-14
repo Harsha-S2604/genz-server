@@ -4,6 +4,9 @@ import (
 	"log"
 	"database/sql"
 	"net/http"
+	"errors"
+	"strings"
+	"strconv"
 
 	"github.com/Harsha-S2604/genz-server/models/users"
 	"github.com/Harsha-S2604/genz-server/utilities/validations"
@@ -25,30 +28,31 @@ func ValidateUserLoginHandler(genzDB *sql.DB) gin.HandlerFunc {
 
 		if !ok {
 			log.Println("Token not exists")
-			ctx.JSON(http.StatusUnauthorized, gin.H{
-				"code": http.StatusUnauthorized,
+			ctx.JSON(http.StatusOK, gin.H{
+				"code": http.StatusOK,
 				"success": false,
-				"message": "Sorry my friend, Invalid security key. Please refresh the page or try again later.",
+				"message": "Sorry my friend, Invalid request. We'll fix it ASAP. Please refresh the page or try again later.",
 			})
 			return
 		} else {
 			xGenzToken = xGenzTokenArr[0]
+			ctx.ShouldBindJSON(&userFromRequest)
 		} 
 
 		if X_GENZ_TOKEN != xGenzToken {
 			log.Println("ERROR Function ValidateUserLogin: Invalid security key", userFromRequest.Email)
-			ctx.JSON(http.StatusUnauthorized, gin.H{
-				"code": http.StatusUnauthorized,
+			ctx.JSON(http.StatusOK, gin.H{
+				"code": http.StatusOK,
 				"success": false,
-				"message": "Sorry my friend, Invalid security key. Please refresh the page or try again later.",
+				"message": "Sorry my friend, Invalid security key. We'll fix it ASAP. Please refresh the page or try again later.",
 			})
 			return
 		}
-		ctx.ShouldBindJSON(&userFromRequest)
+		
 
+		// validate email and hash the password
 		isValidEmail, err := validations.ValidateUserEmail(userFromRequest.Email)
 		hashedPassword := hashing.HashUserPassword(userFromRequest.Password)
-		log.Println("Hashedpassword", hashedPassword)
 		if err != nil {
 			log.Println("ERROR Function ValidateUserLogin: ", err.Error(), userFromRequest.Email)
 			ctx.JSON(http.StatusOK, gin.H{
@@ -144,9 +148,159 @@ func ValidateUserLoginHandler(genzDB *sql.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(ValidateUserLogin)
 }
 
-// func UserRegisterHandler(genzDB *sql.DB) gin.HandlerFunc {
+func UserRegisterHandler(genzDB *sql.DB) gin.HandlerFunc {
 	
-// 	UserRegister := func(ctx *gin.Context) {
+	UserRegister := func(ctx *gin.Context) {
 
-// 	}
-// }
+		var userFromRequest users.User
+		var xGenzToken string 
+		// user := new(users.User)
+		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
+
+		if !ok {
+			log.Println("Token not exists.")
+			ctx.JSON(http.StatusOK, gin.H {
+				"code": http.StatusOK,
+				"success": false,
+				"message": "Sorry my friend, Invalid request. We'll fix it ASAP. Please refresh the page or try again later.",
+			})
+		} else {
+			xGenzToken = xGenzTokenArr[0]
+			ctx.ShouldBindJSON(&userFromRequest)
+
+			if X_GENZ_TOKEN != xGenzToken {
+				log.Println("ERROR Function UserRegister: Invalid security key", userFromRequest.Email)
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": false,
+					"message": "Sorry my friend, Invalid security key. We'll fix it ASAP. Please refresh the page or try again later.",
+				})
+			} else {
+
+				// validate email and hash the password
+				isValidEmail, isValidEmailErr := validations.ValidateUserEmail(userFromRequest.Email)
+				isUserExists := checkUserExists(genzDB, userFromRequest.Email)
+				if isUserExists {
+					log.Println("User already exists", userFromRequest.Email)
+					ctx.JSON(http.StatusOK, gin.H{
+						"code": http.StatusOK,
+						"success": false,
+						"message": "User already exists.",
+					})
+				} else {
+					log.Println("Registering... user", userFromRequest.Email)
+					hashedPassword := hashing.HashUserPassword(userFromRequest.Password)
+					if isValidEmailErr != nil {
+						log.Println("ERROR Function UserRegister: ", isValidEmailErr.Error(), userFromRequest.Email)
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": false,
+							"message": "Sorry my friend, Email is not in a valid format.",
+						})
+					} else {
+						log.Println("is valid email", isValidEmail, userFromRequest.Email)
+						userId, generateIdErr := generateUserId(genzDB)
+						if generateIdErr != nil {
+							log.Println("ERROR Function UserRegister: USER ID generation error", generateIdErr.Error())
+							ctx.JSON(http.StatusInternalServerError, gin.H{
+								"code": http.StatusInternalServerError,
+								"success": false,
+								"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
+							})
+						} else {
+							log.Println("Generated userid: ", userId)
+							// Execute the query
+							insertResults, qryErr := genzDB.ExecContext(ctx, "INSERT INTO users VALUES(?, ?, ?, ?, ?);", userId, userFromRequest.Name, 
+							userFromRequest.Email,userFromRequest.IsEmailVerified, hashedPassword)
+							if qryErr != nil {
+								log.Println("ERROR Function UserRegister: "+qryErr.Error())
+								ctx.JSON(http.StatusInternalServerError, gin.H{
+									"code": http.StatusInternalServerError,
+									"success": false,
+									"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
+								})
+							}
+							rowsAffected, rowsAffectedErr := insertResults.RowsAffected()
+							if rowsAffectedErr != nil {
+								log.Fatal("ERROR Function UserRegister: ", rowsAffectedErr.Error())
+								ctx.JSON(http.StatusInternalServerError, gin.H{
+									"code": http.StatusInternalServerError,
+									"success": false,
+									"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
+								})
+							} else {
+								if rowsAffected > 0 {
+									log.Println("User registration successfull", userFromRequest.Email)
+									ctx.JSON(http.StatusOK, gin.H{
+										"code": http.StatusOK,
+										"success": true,
+										"message": "User registration successfull.",
+									})
+								} else {
+									ctx.JSON(http.StatusOK, gin.H{
+										"code": http.StatusOK,
+										"success": false,
+										"message": "User registration failed.",
+									})
+								}
+							}
+						}
+						
+					}
+				}
+			}
+		}
+
+		
+
+	}
+
+	return gin.HandlerFunc(UserRegister)
+
+}
+
+func generateUserId(genzDB *sql.DB) (string, error) {
+	var user users.User
+	var maxUserId int
+	var finalUserId string
+
+	query := "SELECT user_id FROM users;"
+	queryResults, qryErr := genzDB.Query(query)
+	if qryErr != nil {
+		log.Println("ERROR Function generateUserId: "+qryErr.Error())
+		return "", errors.New("Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.")
+	}
+	for queryResults.Next() {
+		queryResultsErr := queryResults.Scan(&user.UserId)
+		if queryResultsErr != nil {
+			log.Println("ERROR Function generateUserId: "+queryResultsErr.Error())
+			return "", errors.New("Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.")
+		}
+		userIdArr := strings.Split(user.UserId, "-")
+		numUserId, atoiErr := strconv.Atoi(userIdArr[1])
+
+		if atoiErr != nil {
+			log.Println("ERROR Function generateUserId: "+atoiErr.Error())
+			return "", errors.New("Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.")
+		}
+
+		if maxUserId <= numUserId {
+			maxUserId = numUserId
+		}
+
+	}
+	userIdString := strconv.Itoa(maxUserId+1)
+	finalUserId = "GB-"+userIdString
+	return finalUserId, nil
+}
+
+
+func checkUserExists(genzDB *sql.DB, email string) bool {
+	var rowCount int
+	query := "SELECT COUNT(*) FROM users WHERE email = ?"
+	_ = genzDB.QueryRow(query, email).Scan(&rowCount)
+	if rowCount > 0 {
+		return true
+	}
+	return false
+}
