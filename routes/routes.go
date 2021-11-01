@@ -14,7 +14,7 @@ func SetupRouter(genzDB *sql.DB) *gin.Engine{
 	router := gin.Default()
 	config := cors.Config{
 		AllowOrigins: []string{"http://localhost:3000"},
-		AllowHeaders:     []string{"Origin", "x-genz-token"},
+		AllowHeaders:     []string{"Origin", "x-genz-token", "content-type"},
 	}
 	router.Use(cors.New(config))
 
@@ -25,6 +25,9 @@ func SetupRouter(genzDB *sql.DB) *gin.Engine{
 
 		// register user
 		userAPIRouter.POST("/register", userService.UserRegisterHandler(genzDB))
+
+		// get user details by id
+		userAPIRouter.GET("/fetch-profile", userService.GetUserByIdHandler(genzDB))
 
 	}
 

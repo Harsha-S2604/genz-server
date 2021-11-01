@@ -7,10 +7,12 @@ import (
 	"errors"
 	"strings"
 	"strconv"
+	"time"
 
 	"github.com/Harsha-S2604/genz-server/models/users"
 	"github.com/Harsha-S2604/genz-server/utilities/validations"
 	"github.com/Harsha-S2604/genz-server/utilities/hashing"
+	"github.com/Harsha-S2604/genz-server/utilities/verification"
 	"github.com/gin-gonic/gin"
 )
 
@@ -209,6 +211,18 @@ func UserRegisterHandler(genzDB *sql.DB) gin.HandlerFunc {
 							})
 						} else {
 							log.Println("Generated userid: ", userId)
+
+							// generate the verification code
+							verificationCode, verificationCodeErr := verification.GenerateSixDigitCode()
+							if verificationCodeErr != nil {
+								ctx.JSON(http.StatusOK, gin.H{
+									"code": http.StatusOK,
+									"success": false,
+									"message": "User registration failed. Please try again later.",
+								})
+								return
+							}
+							log.Println("verification code", verificationCode)
 							// Execute the query
 							insertResults, qryErr := genzDB.ExecContext(ctx, "INSERT INTO users VALUES(?, ?, ?, ?, ?);", userId, userFromRequest.Name, 
 							userFromRequest.Email,userFromRequest.IsEmailVerified, hashedPassword)
@@ -231,10 +245,13 @@ func UserRegisterHandler(genzDB *sql.DB) gin.HandlerFunc {
 							} else {
 								if rowsAffected > 0 {
 									log.Println("User registration successfull", userFromRequest.Email)
+									timeNow := time.Now()
+									_, _ = genzDB.ExecContext(ctx, "INSERT INTO user_verification_code VALUES(?, ?, ?);", verificationCode, userFromRequest.Email, timeNow)
 									ctx.JSON(http.StatusOK, gin.H{
 										"code": http.StatusOK,
 										"success": true,
 										"message": "User registration successfull.",
+										"data": timeNow,
 									})
 								} else {
 									ctx.JSON(http.StatusOK, gin.H{
@@ -257,6 +274,66 @@ func UserRegisterHandler(genzDB *sql.DB) gin.HandlerFunc {
 
 	return gin.HandlerFunc(UserRegister)
 
+}
+
+func GetUserByIdHandler(genzDB *sql.DB) gin.HandlerFunc {
+
+	GetUserById := func(ctx *gin.Context) {
+		
+
+		var xGenzToken string
+		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
+		if !ok {
+			log.Println("Token not exists.")
+			ctx.JSON(http.StatusOK, gin.H {
+				"code": http.StatusOK,
+				"success": false,
+				"message": "Sorry my friend, Invalid request. We'll fix it ASAP. Please refresh the page or try again later.",
+			})
+		} else {
+			queryParams := ctx.Request.URL.Query()
+			userIdFromReq := queryParams["userId"][0]
+			xGenzToken = xGenzTokenArr[0]
+			var user users.User
+			if X_GENZ_TOKEN != xGenzToken {
+				log.Println("ERROR Function GetUserById: Invalid security key", userIdFromReq)
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": false,
+					"message": "Sorry my friend, Invalid security key. We'll fix it ASAP. Please refresh the page or try again later.",
+				})
+			} else {
+				getUserResultsErr := genzDB.QueryRow("SELECT user_id, name, email, profile, is_email_verified FROM users WHERE user_id=?;", userIdFromReq).Scan(&user.UserId, &user.Name, &user.Email, &user.Profile, &user.IsEmailVerified)
+				switch getUserResultsErr {
+					case sql.ErrNoRows:
+						log.Println("No rows were returned!", userIdFromReq)
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": false,
+							"message": "User not found",
+						})
+					case nil:
+						log.Println("User fetched for profile", userIdFromReq)
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": true,
+							"data": user,
+						})
+					default:
+						log.Println("ERROR Function GetUserById: "+getUserResultsErr.Error())
+						ctx.JSON(http.StatusInternalServerError, gin.H{
+							"code": http.StatusInternalServerError,
+							"success": false,
+							"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
+						})
+				}
+				
+			}
+		}
+
+	}
+
+	return gin.HandlerFunc(GetUserById)
 }
 
 func generateUserId(genzDB *sql.DB) (string, error) {

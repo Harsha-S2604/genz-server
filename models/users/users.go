@@ -6,11 +6,12 @@ type User struct {
 	Name			string `json: "name"`
 	Email 			string `json: "email"`
 	Password 		string `json: "password"`
+	Profile			string `json: "profile"`
 	IsEmailVerified bool   `json: "isEmailVerified"`
 }
 
-func New(userId string, name string, email string, password string, isEmailVerified bool) User {
-	return User{userId, name, email, password, isEmailVerified}
+func New(userId string, name string, email string, password string, profile string, isEmailVerified bool) User {
+	return User{userId, name, email, password, profile, isEmailVerified}
 }
 
 func (u *User) GetUserId() string {
