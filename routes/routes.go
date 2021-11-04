@@ -34,7 +34,16 @@ func SetupRouter(genzDB *sql.DB) *gin.Engine{
 
 	blogAPIRouter := router.Group("genz-server/blog-api")
 	{
+		// add blog
 		blogAPIRouter.POST("/add-blog", blogService.AddBlogHandler(genzDB))
+
+		// get blog details by id
+		blogAPIRouter.GET("/fetch-blog", blogService.GetBlogByIDHandler(genzDB))
+
+		// get all blogs
+		blogAPIRouter.GET("/fetch-blogs", blogService.GetAllBlogsHandler(genzDB))
+
+
 	}
 
 	return router
