@@ -4,6 +4,7 @@ import (
 	"database/sql"
 
 	"github.com/Harsha-S2604/genz-server/services/userService"
+	"github.com/Harsha-S2604/genz-server/services/blogService"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
@@ -29,6 +30,11 @@ func SetupRouter(genzDB *sql.DB) *gin.Engine{
 		// get user details by id
 		userAPIRouter.GET("/fetch-profile", userService.GetUserByIdHandler(genzDB))
 
+	}
+
+	blogAPIRouter := router.Group("genz-server/blog-api")
+	{
+		blogAPIRouter.POST("/add-blog", blogService.AddBlogHandler(genzDB))
 	}
 
 	return router
