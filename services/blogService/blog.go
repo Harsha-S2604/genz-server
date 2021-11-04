@@ -211,3 +211,73 @@ func GetAllBlogsHandler(genzDB *sql.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(GetAllBlog)
 
 }
+
+func DeleteBlogHandler(genzDB *sql.DB) gin.HandlerFunc {
+
+	DeleteBlog := func(ctx *gin.Context) {
+		var xGenzToken string
+		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"]
+
+		if !ok {
+			log.Println("TOKEN NOT EXISTS.")
+			ctx.JSON(http.StatusOK, gin.H{
+				"code": http.StatusOK,
+				"success": false,
+				"message": "Sorry my friend, Invalid request. We'll fix it ASAP. Please refresh the page or try again later.",
+			})
+		} else {
+			xGenzToken = xGenzTokenArr[0]
+			if xGenzToken != X_GENZ_TOKEN {
+				log.Println("Invalid token.")
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": false,
+					"message": "Sorry my friend, Invalid token. We'll fix it ASAP. Please refresh the page or try again later.",
+				})
+			} else {
+				queryParams := ctx.Request.URL.Query()
+				blogIdFromReq := queryParams["blogId"][0]
+				emailFromReq := queryParams["email"][0]
+
+				delRes, delErr := genzDB.Exec("DELETE FROM blog WHERE blog_id=? AND email=?", blogIdFromReq, emailFromReq)
+				if delErr != nil {
+					log.Println("ERROR function DeleteBlog: ", delErr.Error())
+					ctx.JSON(http.StatusOK, gin.H{
+						"code": http.StatusOK,
+						"success": false,
+						"message": "Sorry my friend, Something went wrong. We'll fix it ASAP. Please refresh the page or try again later.",
+					})
+				} else {
+					count, countErr := delRes.RowsAffected()
+					if countErr != nil {
+						log.Println("ERROR function DeleteBlog: ", countErr.Error())
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": false,
+							"message": "Sorry my friend, Something went wrong. We'll fix it ASAP. Please refresh the page or try again later.",
+						})
+					} else {
+						if count > 0 {
+							log.Println("DELETED SUCCESSFULLY", blogIdFromReq)
+							ctx.JSON(http.StatusOK, gin.H{
+								"code": http.StatusOK,
+								"success": true,
+								"message": "Successfully deleted the blog.",
+							})
+						} else {
+							log.Println("DELETION FAILED", blogIdFromReq)
+							ctx.JSON(http.StatusOK, gin.H{
+								"code": http.StatusOK,
+								"success": false,
+								"message": "Blog not found. Please refresh the page or try again later.",
+							})
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return gin.HandlerFunc(DeleteBlog)
+
+}
