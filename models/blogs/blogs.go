@@ -12,5 +12,6 @@ type Blog struct {
 	BlogContent 	  string 		`json: blogContent`
 	BlogCreatedAt	  []uint8 		`json: blogCreatedAt`
 	BlogLastUpdatedAt []uint8 		`json: blogUpdatedAt`
+	BlogIsDraft		  bool			`json: blogIsDraft`
 	User			  users.User	`json: user`
 }

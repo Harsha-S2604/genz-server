@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"net/http"
 	"time"
+	"strconv"
 
 	"github.com/Harsha-S2604/genz-server/models/blogs"
 
@@ -41,9 +42,13 @@ func AddBlogHandler(genzDB *sql.DB) gin.HandlerFunc {
 				})
 				return
 			}
-			ctx.ShouldBindJSON(&blog)
+			err := ctx.ShouldBindJSON(&blog)
+			if(err != nil) {
+				log.Println("ERROR FUNCTION ADD BLOG:", err.Error())
+			}
 			timeNow := time.Now()
-			insertQueryResult, insertQueryError := genzDB.ExecContext(ctx, "INSERT INTO blog(blog_title, blog_description, blog_content, blog_created_at, blog_last_updated_at, email) VALUES(?, ?, ?, ?, ?, ?);", blog.BlogTitle, blog.BlogDescription, blog.BlogContent, timeNow, timeNow, blog.User.Email)
+			log.Println(blog)
+			insertQueryResult, insertQueryError := genzDB.ExecContext(ctx, "INSERT INTO blog(blog_title, blog_description, blog_content, blog_created_at, blog_last_updated_at, blog_is_draft, email) VALUES(?, ?, ?, ?, ?, ?, ?);", blog.BlogTitle, blog.BlogDescription, blog.BlogContent, timeNow, timeNow, blog.BlogIsDraft, blog.User.Email)
 			if insertQueryError != nil {
 				log.Println("ERROR function AddBlog:", insertQueryError.Error())
 				ctx.JSON(http.StatusOK, gin.H{
@@ -110,9 +115,10 @@ func GetBlogByIDHandler(genzDB *sql.DB) gin.HandlerFunc {
 				queryParams := ctx.Request.URL.Query()
 				blogIdFromReq := queryParams["blogId"][0]
 				emailFromReq := queryParams["email"][0]
+				isGetDraft := queryParams["get_draft"][0]
 				var blog blogs.Blog
 
-				getResultQuery := genzDB.QueryRow("SELECT * FROM blog WHERE blog_id=? AND email=?", blogIdFromReq, emailFromReq).Scan(&blog.BlogID, &blog.BlogTitle, &blog.BlogDescription, &blog.BlogContent, &blog.BlogCreatedAt, &blog.BlogLastUpdatedAt, &blog.User.Email)
+				getResultQuery := genzDB.QueryRow("SELECT * FROM blog WHERE blog_id=? AND email=? AND blog_is_draft=?", blogIdFromReq, emailFromReq, isGetDraft).Scan(&blog.BlogID, &blog.BlogTitle, &blog.BlogDescription, &blog.BlogContent, &blog.BlogCreatedAt, &blog.BlogLastUpdatedAt, &blog.BlogIsDraft, &blog.User.Email)
 				switch getResultQuery {
 					case sql.ErrNoRows:
 						log.Println("No rows were returned!", blogIdFromReq)
@@ -169,9 +175,10 @@ func GetAllBlogsHandler(genzDB *sql.DB) gin.HandlerFunc {
 			} else {
 				queryParams := ctx.Request.URL.Query()
 				emailFromReq := queryParams["email"][0]
+				isGetDraft, _ := strconv.ParseBool(queryParams["get_draft"][0])
 				var blogsArr []blogs.Blog
 
-				blogRows, blogRowsErr := genzDB.Query("SELECT * FROM blog WHERE email=?", emailFromReq)
+				blogRows, blogRowsErr := genzDB.Query("SELECT * FROM blog WHERE email=? AND blog_is_draft=?", emailFromReq, isGetDraft)
 				if blogRowsErr != nil {
 					log.Println("ERROR function GetAllBlog: ", blogRowsErr.Error())
 					ctx.JSON(http.StatusOK, gin.H{
@@ -182,7 +189,7 @@ func GetAllBlogsHandler(genzDB *sql.DB) gin.HandlerFunc {
 				} else {
 					for blogRows.Next() {
 						var blogObj blogs.Blog
-						if blogErr := blogRows.Scan(&blogObj.BlogID, &blogObj.BlogTitle, &blogObj.BlogDescription, &blogObj.BlogContent, &blogObj.BlogCreatedAt, &blogObj.BlogLastUpdatedAt, &blogObj.User.Email); blogErr != nil {
+						if blogErr := blogRows.Scan(&blogObj.BlogID, &blogObj.BlogTitle, &blogObj.BlogDescription, &blogObj.BlogContent, &blogObj.BlogCreatedAt, &blogObj.BlogLastUpdatedAt, &blogObj.BlogIsDraft, &blogObj.User.Email); blogErr != nil {
 							log.Println("ERROR function GetAllBlog blogErr:", blogErr.Error())
 							ctx.JSON(http.StatusOK, gin.H{
 								"code": http.StatusOK,
