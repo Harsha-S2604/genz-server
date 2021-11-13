@@ -47,8 +47,7 @@ func AddBlogHandler(genzDB *sql.DB) gin.HandlerFunc {
 				log.Println("ERROR FUNCTION ADD BLOG:", err.Error())
 			}
 			timeNow := time.Now()
-			log.Println(blog)
-			insertQueryResult, insertQueryError := genzDB.ExecContext(ctx, "INSERT INTO blog(blog_title, blog_description, blog_content, blog_created_at, blog_last_updated_at, blog_is_draft, email) VALUES(?, ?, ?, ?, ?, ?, ?);", blog.BlogTitle, blog.BlogDescription, blog.BlogContent, timeNow, timeNow, blog.BlogIsDraft, blog.User.Email)
+			insertQueryResult, insertQueryError := genzDB.ExecContext(ctx, "INSERT INTO blog(blog_title, blog_description, blog_content, blog_created_at, blog_last_updated_at, blog_is_draft, blog_total_views, blog_total_likes, email) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?);", blog.BlogTitle, blog.BlogDescription, blog.BlogContent, timeNow, timeNow, blog.BlogIsDraft, blog.BlogTotalViews, blog.BlogTotalLikes, blog.User.Email)
 			if insertQueryError != nil {
 				log.Println("ERROR function AddBlog:", insertQueryError.Error())
 				ctx.JSON(http.StatusOK, gin.H{
@@ -118,7 +117,7 @@ func GetBlogByIDHandler(genzDB *sql.DB) gin.HandlerFunc {
 				isGetDraft := queryParams["get_draft"][0]
 				var blog blogs.Blog
 
-				getResultQuery := genzDB.QueryRow("SELECT * FROM blog WHERE blog_id=? AND email=? AND blog_is_draft=?", blogIdFromReq, emailFromReq, isGetDraft).Scan(&blog.BlogID, &blog.BlogTitle, &blog.BlogDescription, &blog.BlogContent, &blog.BlogCreatedAt, &blog.BlogLastUpdatedAt, &blog.BlogIsDraft, &blog.User.Email)
+				getResultQuery := genzDB.QueryRow("SELECT * FROM blog WHERE blog_id=? AND email=? AND blog_is_draft=?", blogIdFromReq, emailFromReq, isGetDraft).Scan(&blog.BlogID, &blog.BlogTitle, &blog.BlogDescription, &blog.BlogContent, &blog.BlogCreatedAt, &blog.BlogLastUpdatedAt, &blog.BlogIsDraft, &blog.BlogTotalViews, &blog.BlogTotalLikes, &blog.User.Email)
 				switch getResultQuery {
 					case sql.ErrNoRows:
 						log.Println("No rows were returned!", blogIdFromReq)
@@ -189,7 +188,7 @@ func GetAllBlogsHandler(genzDB *sql.DB) gin.HandlerFunc {
 				} else {
 					for blogRows.Next() {
 						var blogObj blogs.Blog
-						if blogErr := blogRows.Scan(&blogObj.BlogID, &blogObj.BlogTitle, &blogObj.BlogDescription, &blogObj.BlogContent, &blogObj.BlogCreatedAt, &blogObj.BlogLastUpdatedAt, &blogObj.BlogIsDraft, &blogObj.User.Email); blogErr != nil {
+						if blogErr := blogRows.Scan(&blogObj.BlogID, &blogObj.BlogTitle, &blogObj.BlogDescription, &blogObj.BlogContent, &blogObj.BlogCreatedAt, &blogObj.BlogLastUpdatedAt, &blogObj.BlogIsDraft, &blogObj.BlogTotalViews, &blogObj.BlogTotalLikes, &blogObj.User.Email); blogErr != nil {
 							log.Println("ERROR function GetAllBlog blogErr:", blogErr.Error())
 							ctx.JSON(http.StatusOK, gin.H{
 								"code": http.StatusOK,
@@ -287,4 +286,66 @@ func DeleteBlogHandler(genzDB *sql.DB) gin.HandlerFunc {
 
 	return gin.HandlerFunc(DeleteBlog)
 
+}
+
+func FetchRecentArticlesHandler(genzDB *sql.DB) gin.HandlerFunc {
+
+	FetchRecentArticles := func(ctx *gin.Context) {
+		var xGenzToken string
+		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"]
+
+		if !ok {
+			log.Println("TOKEN NOT EXISTS.")
+			ctx.JSON(http.StatusOK, gin.H{
+				"code": http.StatusOK,
+				"success": false,
+				"message": "Sorry my friend, Invalid request. We'll fix it ASAP. Please refresh the page or try again later.",
+			})
+		} else {
+			xGenzToken = xGenzTokenArr[0]
+			if xGenzToken != X_GENZ_TOKEN {
+				log.Println("Invalid token.")
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": false,
+					"message": "Sorry my friend, Invalid token. We'll fix it ASAP. Please refresh the page or try again later.",
+				})
+			} else {
+				recentArticlesRows, recentArticlesRowsErr := genzDB.Query("SELECT * FROM blog WHERE blog_is_draft=false ORDER BY blog_created_at DESC LIMIT 5")
+				if recentArticlesRowsErr != nil {
+					log.Println("ERROR function FetchRecentArticles: ", recentArticlesRowsErr.Error())
+					ctx.JSON(http.StatusOK, gin.H{
+						"code": http.StatusOK,
+						"success": false,
+						"message": "Sorry my friend, Something went wrong. We'll fix it ASAP. Please refresh the page or try again later.",
+					})
+				} else {
+					var recentArticlesArr []blogs.Blog
+					for recentArticlesRows.Next() {
+						var blogObj blogs.Blog
+						if blogErr := recentArticlesRows.Scan(&blogObj.BlogID, &blogObj.BlogTitle, &blogObj.BlogDescription, &blogObj.BlogContent, &blogObj.BlogCreatedAt, &blogObj.BlogLastUpdatedAt, &blogObj.BlogIsDraft, &blogObj.BlogTotalViews, &blogObj.BlogTotalLikes, &blogObj.User.Email); blogErr != nil {
+							log.Println("ERROR function FetchRecentArticles:", blogErr.Error())
+							ctx.JSON(http.StatusOK, gin.H{
+								"code": http.StatusOK,
+								"success": false,
+								"message": "Sorry my friend, Something went wrong. We'll fix it ASAP. Please refresh the page or try again later.",
+							})
+							return
+						}
+						recentArticlesArr = append(recentArticlesArr, blogObj)
+					}
+
+					ctx.JSON(http.StatusOK, gin.H{
+						"code": http.StatusOK,
+						"success": true,
+						"message": "recent articles fetched.",
+						"data": recentArticlesArr,
+					})
+
+				}
+			}
+		}
+	}
+
+	return gin.HandlerFunc(FetchRecentArticles)
 }

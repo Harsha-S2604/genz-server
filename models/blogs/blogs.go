@@ -13,5 +13,7 @@ type Blog struct {
 	BlogCreatedAt	  []uint8 		`json: blogCreatedAt`
 	BlogLastUpdatedAt []uint8 		`json: blogUpdatedAt`
 	BlogIsDraft		  bool			`json: blogIsDraft`
+	BlogTotalViews	  int64			`json: blogTotalViews`
+	BlogTotalLikes	  int64			`json: blogTotalLikes`
 	User			  users.User	`json: user`
 }

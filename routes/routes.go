@@ -46,6 +46,9 @@ func SetupRouter(genzDB *sql.DB) *gin.Engine{
 		// delete blog
 		blogAPIRouter.POST("/remove-blog", blogService.DeleteBlogHandler(genzDB))
 
+		// recent blog
+		blogAPIRouter.GET("/recent-blogs", blogService.FetchRecentArticlesHandler(genzDB))
+
 	}
 
 	return router
