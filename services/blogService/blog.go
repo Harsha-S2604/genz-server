@@ -113,11 +113,10 @@ func GetBlogByIDHandler(genzDB *sql.DB) gin.HandlerFunc {
 			} else {
 				queryParams := ctx.Request.URL.Query()
 				blogIdFromReq := queryParams["blogId"][0]
-				emailFromReq := queryParams["email"][0]
 				isGetDraft := queryParams["get_draft"][0]
 				var blog blogs.Blog
 
-				getResultQuery := genzDB.QueryRow("SELECT * FROM blog WHERE blog_id=? AND email=? AND blog_is_draft=?", blogIdFromReq, emailFromReq, isGetDraft).Scan(&blog.BlogID, &blog.BlogTitle, &blog.BlogDescription, &blog.BlogContent, &blog.BlogCreatedAt, &blog.BlogLastUpdatedAt, &blog.BlogIsDraft, &blog.BlogTotalViews, &blog.BlogTotalLikes, &blog.User.Email)
+				getResultQuery := genzDB.QueryRow("SELECT * FROM blog WHERE blog_id=? AND blog_is_draft=?", blogIdFromReq, isGetDraft).Scan(&blog.BlogID, &blog.BlogTitle, &blog.BlogDescription, &blog.BlogContent, &blog.BlogCreatedAt, &blog.BlogLastUpdatedAt, &blog.BlogIsDraft, &blog.BlogTotalViews, &blog.BlogTotalLikes, &blog.User.Email)
 				switch getResultQuery {
 					case sql.ErrNoRows:
 						log.Println("No rows were returned!", blogIdFromReq)
@@ -348,4 +347,84 @@ func FetchRecentArticlesHandler(genzDB *sql.DB) gin.HandlerFunc {
 	}
 
 	return gin.HandlerFunc(FetchRecentArticles)
+}
+
+func AddFavoritesHandler(genzDB *sql.DB) gin.HandlerFunc {
+
+	AddFavorites := func(ctx *gin.Context) {
+
+		var xGenzToken string
+		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"]
+
+		if !ok {
+			log.Println("TOKEN NOT EXISTS.")
+			ctx.JSON(http.StatusOK, gin.H{
+				"code": http.StatusOK,
+				"success": false,
+				"message": "Sorry my friend, Invalid request. We'll fix it ASAP. Please refresh the page or try again later.",
+			})
+		} else {
+			xGenzToken = xGenzTokenArr[0]
+			if xGenzToken != X_GENZ_TOKEN {
+				log.Println("Invalid token.")
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": false,
+					"message": "Sorry my friend, Invalid token. We'll fix it ASAP. Please refresh the page or try again later.",
+				})
+			} else {
+				var savedBlogs blogs.SavedBlogs
+				savedBlogBindingErr := ctx.ShouldBindJSON(&savedBlogs)
+				if savedBlogBindingErr != nil {
+					log.Fatal("ERROR function AddFavorites:", savedBlogBindingErr.Error())
+					ctx.JSON(http.StatusOK, gin.H{
+						"code": http.StatusOK,
+						"success": false,
+						"message": "Sorry my friend, Something went wrong. We'll fix it ASAP. Please refresh the page or try again later.",
+					})
+				} else {
+					blogId, email := savedBlogs.Blog.BlogID, savedBlogs.User.Email
+					query := "INSERT INTO saved_blogs VALUE(?, ?)"
+					insertQueryResult, insertQueryError := genzDB.ExecContext(ctx, query, blogId, email)
+					if insertQueryError != nil {
+						log.Fatal("ERROR function AddFavorites", insertQueryError)
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": false,
+							"message": "Sorry my friend, Error saving the blogs to the favorites. Please refresh the page or try again later.",
+						})	
+					} else {
+						rowsAffected, rowsAffectedErr := insertQueryResult.RowsAffected()
+						if rowsAffectedErr != nil {
+							log.Fatal("ERROR function AddFavorites", rowsAffectedErr.Error())
+							ctx.JSON(http.StatusOK, gin.H{
+								"code": http.StatusOK,
+								"success": false,
+								"message": "Sorry my friend, Something went wrong. We'll fix it ASAP. Please refresh the page or try again later.",
+							})
+						} else {
+							if rowsAffected > 0 {
+								ctx.JSON(http.StatusOK, gin.H{
+									"code": http.StatusOK,
+									"success": true,
+									"message": "Blog added to favorites.",
+								})
+							} else {
+								log.Fatal("Failed to add the blog to favorites.")
+								ctx.JSON(http.StatusOK, gin.H{
+									"code": http.StatusOK,
+									"success": false,
+									"message": "Failed to add the blog to favorites. Please refresh the page or try again later.",
+								})
+							}
+						}
+					}
+					
+				}
+			}
+		}
+
+	}
+
+	return gin.HandlerFunc(AddFavorites)
 }

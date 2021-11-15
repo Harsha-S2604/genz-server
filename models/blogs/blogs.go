@@ -17,3 +17,8 @@ type Blog struct {
 	BlogTotalLikes	  int64			`json: blogTotalLikes`
 	User			  users.User	`json: user`
 }
+
+type SavedBlogs struct {
+	Blog	Blog 	   `json: blog`
+	User	users.User `json: user`
+}
