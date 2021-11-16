@@ -50,7 +50,7 @@ func SetupRouter(genzDB *sql.DB) *gin.Engine{
 		blogAPIRouter.GET("/recent-blogs", blogService.FetchRecentArticlesHandler(genzDB))
 
 		// add favorites blog
-		blogAPIRouter.GET("/favorite-blog", blogService.AddFavoritesHandler(genzDB))
+		blogAPIRouter.GET("/saved-blog", blogService.AddSavedBlogsHandler(genzDB))
 
 	}
 

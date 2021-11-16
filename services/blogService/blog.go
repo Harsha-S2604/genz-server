@@ -349,9 +349,9 @@ func FetchRecentArticlesHandler(genzDB *sql.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(FetchRecentArticles)
 }
 
-func AddFavoritesHandler(genzDB *sql.DB) gin.HandlerFunc {
+func AddSavedBlogsHandler(genzDB *sql.DB) gin.HandlerFunc {
 
-	AddFavorites := func(ctx *gin.Context) {
+	AddSavedBlogs := func(ctx *gin.Context) {
 
 		var xGenzToken string
 		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"]
@@ -426,5 +426,5 @@ func AddFavoritesHandler(genzDB *sql.DB) gin.HandlerFunc {
 
 	}
 
-	return gin.HandlerFunc(AddFavorites)
+	return gin.HandlerFunc(AddSavedBlogs)
 }
