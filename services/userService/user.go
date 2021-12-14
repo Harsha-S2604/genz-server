@@ -336,6 +336,74 @@ func GetUserByIdHandler(genzDB *sql.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(GetUserById)
 }
 
+func EditUserNameHandler(genzDB *sql.DB) gin.HandlerFunc {
+	
+	EditUserName := func(ctx *gin.Context) {
+		var xGenzToken string
+		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
+		var userFromRequest users.User
+		if !ok {
+			log.Println("Token not exists.")
+			ctx.JSON(http.StatusOK, gin.H {
+				"code": http.StatusOK,
+				"success": false,
+				"message": "Sorry my friend, Invalid request. We'll fix it ASAP. Please refresh the page or try again later.",
+			})
+		} else {
+			ctx.ShouldBindJSON(&userFromRequest)
+			xGenzToken = xGenzTokenArr[0]
+			var user users.User
+			if X_GENZ_TOKEN != xGenzToken {
+				log.Println("ERROR Function EditUserName: Invalid security key", userFromRequest.UserId)
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": false,
+					"message": "Sorry my friend, Invalid security key. We'll fix it ASAP. Please refresh the page or try again later.",
+				})
+			} else {
+				getUserResultsErr := genzDB.QueryRow("SELECT user_id FROM users WHERE user_id=?;", userFromRequest.UserId).Scan(&user.UserId)
+				switch getUserResultsErr {
+					case sql.ErrNoRows:
+						log.Println("No rows were returned!", userFromRequest.UserId)
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": false,
+							"message": "User not found",
+						})
+					case nil:
+						sqlUpdateUserNameQuery := "UPDATE users SET name=? WHERE user_id=?;"
+						_, updateQueryError := genzDB.Exec(sqlUpdateUserNameQuery, userFromRequest.Name, userFromRequest.UserId)
+						if updateQueryError != nil {
+							log.Println("ERROR function EditUserName: "+updateQueryError.Error())
+							ctx.JSON(http.StatusOK, gin.H{
+								"code": http.StatusOK,
+								"success": true,
+								"message": "Failed to update username.",
+							})
+						} else {
+							ctx.JSON(http.StatusOK, gin.H{
+								"code": http.StatusOK,
+								"success": true,
+								"message": "Username updated.",
+							})
+						}
+					default:
+						log.Println("ERROR Function EditUserName: "+getUserResultsErr.Error())
+						ctx.JSON(http.StatusInternalServerError, gin.H{
+							"code": http.StatusInternalServerError,
+							"success": false,
+							"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
+						})
+				}
+
+			}
+
+		}
+	}
+
+	return gin.HandlerFunc(EditUserName)
+}
+
 func generateUserId(genzDB *sql.DB) (string, error) {
 	var user users.User
 	var maxUserId int

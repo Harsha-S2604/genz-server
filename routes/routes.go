@@ -30,6 +30,9 @@ func SetupRouter(genzDB *sql.DB) *gin.Engine{
 		// get user details by id
 		userAPIRouter.GET("/fetch-profile", userService.GetUserByIdHandler(genzDB))
 
+		// edit user profile
+		userAPIRouter.POST("/edit-username", userService.EditUserNameHandler(genzDB))
+
 	}
 
 	blogAPIRouter := router.Group("genz-server/blog-api")
