@@ -16,6 +16,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type AboutYouStruct struct {
+	AboutYou string	`json: "aboutYou"`
+	UserId string 	`json: "userId"`
+}
+
 var (
 	X_GENZ_TOKEN = "4439EA5BDBA8B179722265789D029477"
 )
@@ -402,6 +407,78 @@ func EditUserNameHandler(genzDB *sql.DB) gin.HandlerFunc {
 	}
 
 	return gin.HandlerFunc(EditUserName)
+}
+
+func EditAboutYouHandler(genzDB *sql.DB) gin.HandlerFunc {
+	
+	EditAboutYou := func(ctx *gin.Context) {
+
+		var xGenzToken string
+		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
+		var dataFromRequest AboutYouStruct
+		if !ok {
+			log.Println("Token not exists.")
+			ctx.JSON(http.StatusOK, gin.H {
+				"code": http.StatusOK,
+				"success": false,
+				"message": "Sorry my friend, Invalid request. We'll fix it ASAP. Please refresh the page or try again later.",
+			})
+		} else {
+
+			ctx.ShouldBindJSON(&dataFromRequest)
+			xGenzToken = xGenzTokenArr[0]
+			var user users.User
+			if X_GENZ_TOKEN != xGenzToken {
+				log.Println("ERROR Function EditAboutYou: Invalid security key", dataFromRequest.UserId)
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": false,
+					"message": "Sorry my friend, Invalid security key. We'll fix it ASAP. Please refresh the page or try again later.",
+				})
+			} else {
+
+				getUserResultsErr := genzDB.QueryRow("SELECT user_id FROM users WHERE user_id=?;", dataFromRequest.UserId).Scan(&user.UserId)
+				switch getUserResultsErr {
+					case sql.ErrNoRows:
+						log.Println("No rows were returned!", dataFromRequest.UserId)
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": false,
+							"message": "User not found",
+						})
+					case nil:
+						sqlUpdateAboutYouQuery := "UPDATE users SET profile=JSON_SET(profile, \"$.about\", ?) WHERE user_id=?"
+						_, updateQueryError := genzDB.Exec(sqlUpdateAboutYouQuery, dataFromRequest.AboutYou, dataFromRequest.UserId)
+						if updateQueryError != nil {
+							log.Println("ERROR function EditAboutYou: "+updateQueryError.Error())
+							ctx.JSON(http.StatusOK, gin.H{
+								"code": http.StatusOK,
+								"success": true,
+								"message": "Failed to update.",
+							})
+						} else {
+							ctx.JSON(http.StatusOK, gin.H{
+								"code": http.StatusOK,
+								"success": true,
+								"message": "Updated successfully.",
+							})
+						}
+					default:
+						log.Println("ERROR Function EditAboutYou: "+getUserResultsErr.Error())
+						ctx.JSON(http.StatusInternalServerError, gin.H{
+							"code": http.StatusInternalServerError,
+							"success": false,
+							"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
+						})
+					}
+
+			}
+
+		}
+
+	}
+
+	return gin.HandlerFunc(EditAboutYou)
 }
 
 func generateUserId(genzDB *sql.DB) (string, error) {

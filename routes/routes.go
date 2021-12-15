@@ -33,6 +33,8 @@ func SetupRouter(genzDB *sql.DB) *gin.Engine{
 		// edit user profile
 		userAPIRouter.POST("/edit-username", userService.EditUserNameHandler(genzDB))
 
+		userAPIRouter.POST("/edit-aboutyou", userService.EditAboutYouHandler(genzDB))
+
 	}
 
 	blogAPIRouter := router.Group("genz-server/blog-api")
