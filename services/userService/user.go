@@ -21,6 +21,13 @@ type AboutYouStruct struct {
 	UserId string 	`json: "userId"`
 }
 
+type ChangePasswordStruct struct {
+	UserId 			string	`json: userId`
+	OldPasswd		string	`json: oldPasswd`
+	NewPasswd		string	`json: newPasswd`
+	ConfirmPasswd	string	`json: confirmPasswd`
+}
+
 var (
 	X_GENZ_TOKEN = "4439EA5BDBA8B179722265789D029477"
 )
@@ -481,6 +488,88 @@ func EditAboutYouHandler(genzDB *sql.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(EditAboutYou)
 }
 
+func ChangePasswordHandler(genzDB *sql.DB) gin.HandlerFunc {
+
+	ChangePassword := func(ctx *gin.Context) {
+
+		var xGenzToken string
+		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
+		var dataFromRequest ChangePasswordStruct
+		if !ok {
+			log.Println("Token not exists.")
+			ctx.JSON(http.StatusOK, gin.H {
+				"code": http.StatusOK,
+				"success": false,
+				"message": "Sorry my friend, Invalid request. We'll fix it ASAP. Please refresh the page or try again later.",
+			})
+		} else {
+			ctx.ShouldBindJSON(&dataFromRequest)
+			xGenzToken = xGenzTokenArr[0]
+			var user users.User
+			if X_GENZ_TOKEN != xGenzToken {
+				log.Println("ERROR Function EditAboutYou: Invalid security key", dataFromRequest.UserId)
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": false,
+					"message": "Sorry my friend, Invalid security key. We'll fix it ASAP. Please refresh the page or try again later.",
+				})
+			} else {
+
+				getUserResultsErr := genzDB.QueryRow("SELECT password FROM users WHERE user_id=?;", dataFromRequest.UserId).Scan(&user.Password)
+				switch getUserResultsErr {
+					case sql.ErrNoRows:
+						log.Println("No rows were returned!", dataFromRequest.UserId)
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": false,
+							"message": "User not found",
+						})
+					
+					case nil:
+						hashedOldPassword := hashing.HashUserPassword(dataFromRequest.OldPasswd)
+						if hashedOldPassword != user.Password {
+							log.Println("Invalid old password", dataFromRequest.UserId)
+							ctx.JSON(http.StatusOK, gin.H{
+								"code": http.StatusOK,
+								"success": false,
+								"message": "invalid old password",
+							})
+						} else if dataFromRequest.NewPasswd != dataFromRequest.ConfirmPasswd {
+							log.Println("Password do not match", dataFromRequest.UserId)
+							ctx.JSON(http.StatusOK, gin.H{
+								"code": http.StatusOK,
+								"success": false,
+								"message": "Password do not match",
+							})
+						} else {
+							hashedNewPasswd := hashing.HashUserPassword(dataFromRequest.NewPasswd)
+							updatePasswdQry := "UPDATE users SET password=? WHERE user_id=?"
+							_, updatePasswdQryErr := genzDB.Exec(updatePasswdQry, hashedNewPasswd, dataFromRequest.UserId)
+							if updatePasswdQryErr != nil {
+								log.Println("Failed to update password", dataFromRequest.UserId)
+								ctx.JSON(http.StatusOK, gin.H{
+									"code": http.StatusOK,
+									"success": false,
+									"message": "Failed to update password. Please, try again later.",
+								})
+							} else {
+								log.Println("Password updated successfully", dataFromRequest.UserId)
+								ctx.JSON(http.StatusOK, gin.H{
+									"code": http.StatusOK,
+									"success": true,
+									"message": "Password updated successfully",
+								})
+							}
+						}
+					}
+				}						
+
+			}
+		}
+
+		return gin.HandlerFunc(ChangePassword)
+
+	}
 func generateUserId(genzDB *sql.DB) (string, error) {
 	var user users.User
 	var maxUserId int
