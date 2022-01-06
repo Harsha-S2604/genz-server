@@ -13,7 +13,9 @@ import (
 var genzDB *sql.DB
 var dbErr error
 
-func init() {
+func main() {
+
+	// start database
 	// create and load log file
 	logFile, fileLoaderr := os.OpenFile("genz_logs.txt", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
 	if fileLoaderr != nil {
@@ -24,16 +26,14 @@ func init() {
 	// connect to database
 	genzDB, dbErr = db.ConnectDB()
 	if dbErr != nil {
+		log.Println("There is an error")
 		panic(dbErr.Error())
+	} else {
+		log.Println("Database running on port no.3306.")
+		// start server
+		r := routes.SetupRouter(genzDB)
+		r.Run(":8080")
+		defer genzDB.Close()
 	}
-	log.Println("Database running on port no.3306.")
-}
-
-func main() {
-	
-	// start server
-	r := routes.SetupRouter(genzDB)
-	r.Run(":8080")
-	defer genzDB.Close()
 
 }
