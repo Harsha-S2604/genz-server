@@ -19,7 +19,7 @@ func SetupRouter(genzDB *sql.DB) *gin.Engine{
 	}
 	router.Use(cors.New(config))
 
-	userAPIRouter := router.Group("genz-server/user-api") 
+	userAPIRouter := router.Group("api/v1/users") 
 	{
 		// validate user login
 		userAPIRouter.POST("/login", userService.ValidateUserLoginHandler(genzDB))
@@ -28,36 +28,36 @@ func SetupRouter(genzDB *sql.DB) *gin.Engine{
 		userAPIRouter.POST("/register", userService.UserRegisterHandler(genzDB))
 
 		// get user details by id
-		userAPIRouter.GET("/fetch-profile", userService.GetUserByIdHandler(genzDB))
+		userAPIRouter.GET("/profile", userService.GetUserByIdHandler(genzDB))
 
 		// edit user profile
-		userAPIRouter.POST("/edit-username", userService.EditUserNameHandler(genzDB))
+		userAPIRouter.POST("/edit/username", userService.EditUserNameHandler(genzDB))
 
-		userAPIRouter.POST("/edit-aboutyou", userService.EditAboutYouHandler(genzDB))
+		userAPIRouter.POST("/edit/aboutyou", userService.EditAboutYouHandler(genzDB))
 
 		userAPIRouter.POST("/change-passwd", userService.ChangePasswordHandler(genzDB))
 
 	}
 
-	blogAPIRouter := router.Group("genz-server/blog-api")
+	blogAPIRouter := router.Group("api/v1/blogs")
 	{
 		// add blog
-		blogAPIRouter.POST("/add-blog", blogService.AddBlogHandler(genzDB))
+		blogAPIRouter.POST("/add", blogService.AddBlogHandler(genzDB))
 
 		// get blog details by id
-		blogAPIRouter.GET("/fetch-blog", blogService.GetBlogByIDHandler(genzDB))
+		blogAPIRouter.GET("/blog", blogService.GetBlogByIDHandler(genzDB))
 
 		// get all blogs
-		blogAPIRouter.GET("/fetch-blogs", blogService.GetAllBlogsHandler(genzDB))
+		blogAPIRouter.GET("/allBlogs", blogService.GetAllBlogsHandler(genzDB))
 
 		// delete blog
-		blogAPIRouter.POST("/remove-blog", blogService.DeleteBlogHandler(genzDB))
+		blogAPIRouter.POST("/remove", blogService.DeleteBlogHandler(genzDB))
 
 		// recent blog
-		blogAPIRouter.GET("/recent-blogs", blogService.FetchRecentArticlesHandler(genzDB))
+		blogAPIRouter.GET("/recent", blogService.FetchRecentArticlesHandler(genzDB))
 
 		// add favorites blog
-		blogAPIRouter.GET("/saved-blog", blogService.AddSavedBlogsHandler(genzDB))
+		blogAPIRouter.GET("/saved", blogService.AddSavedBlogsHandler(genzDB))
 
 	}
 
