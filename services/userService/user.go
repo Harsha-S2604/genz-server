@@ -237,6 +237,7 @@ func UserRegisterHandler(genzDB *sql.DB) gin.HandlerFunc {
 							}
 							log.Println("verification code", verificationCode)
 							// Execute the query
+							
 							insertResults, qryErr := genzDB.ExecContext(ctx, "INSERT INTO users VALUES(?, ?, ?, ?, ?, ?);", userId, userFromRequest.Name, 
 							userFromRequest.Email,userFromRequest.IsEmailVerified, hashedPassword, "{}")
 							if qryErr != nil {
@@ -246,43 +247,76 @@ func UserRegisterHandler(genzDB *sql.DB) gin.HandlerFunc {
 									"success": false,
 									"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
 								})
-							}
-							rowsAffected, rowsAffectedErr := insertResults.RowsAffected()
-							if rowsAffectedErr != nil {
-								log.Fatal("ERROR Function UserRegister: ", rowsAffectedErr.Error())
-								ctx.JSON(http.StatusInternalServerError, gin.H{
-									"code": http.StatusInternalServerError,
-									"success": false,
-									"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
-								})
 							} else {
-								if rowsAffected > 0 {
-									log.Println("User registration successfull", userFromRequest.Email)
-									isSent := sendVerificationCode(verificationCode, userFromRequest.Name, userFromRequest.Email)
-									if isSent {
-										timeNow := time.Now()
-										_, _ = genzDB.ExecContext(ctx, "INSERT INTO user_verification_code VALUES(?, ?, ?);", verificationCode, userFromRequest.Email, timeNow)
-										ctx.JSON(http.StatusOK, gin.H{
-											"code": http.StatusOK,
-											"success": true,
-											"message": "User registration successfull.",
-											"data": timeNow,
-										})
+								rowsAffected, rowsAffectedErr := insertResults.RowsAffected()
+								if rowsAffectedErr != nil {
+									log.Fatal("ERROR Function UserRegister: ", rowsAffectedErr.Error())
+									ctx.JSON(http.StatusInternalServerError, gin.H{
+										"code": http.StatusInternalServerError,
+										"success": false,
+										"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
+									})
+								} else {
+									if rowsAffected > 0 {
+										log.Println("User registration successfull", userFromRequest.Email)
+										isVerificationCodeExist := checkUserExistsForVerification(genzDB, userFromRequest.Email)
+										if isVerificationCodeExist {
+											timeNow := time.Now()
+											userVerificationCodeQry := "UPDATE user_verification_code SET verification_code=?, created_at=? WHERE email=?;"
+											_, updateQueryError := genzDB.Exec(userVerificationCodeQry, verificationCode, timeNow, userFromRequest.Email)
+											if updateQueryError != nil {
+												log.Println("ERROR function UserRegister: "+updateQueryError.Error())
+												ctx.JSON(http.StatusOK, gin.H{
+													"code": http.StatusOK,
+													"success": false,
+													"message": "User registered failed.",
+												})
+											} else {
+												isSent := sendVerificationCode(verificationCode, userFromRequest.Name, userFromRequest.Email)
+												if isSent {
+													ctx.JSON(http.StatusOK, gin.H{
+														"code": http.StatusOK,
+														"success": true,
+														"message": "User registration successfull.",
+														"data": timeNow,
+													})
+												} else {
+													ctx.JSON(http.StatusOK, gin.H{
+														"code": http.StatusOK,
+														"success": false,
+														"message": "User registration failed. Please try again later!",
+													})
+												}
+											}
+										} else {
+											timeNow := time.Now()
+											_, _ = genzDB.ExecContext(ctx, "INSERT INTO user_verification_code VALUES(?, ?, ?);", verificationCode, userFromRequest.Email, timeNow)
+											isSent := sendVerificationCode(verificationCode, userFromRequest.Name, userFromRequest.Email)
+											if isSent {
+												ctx.JSON(http.StatusOK, gin.H{
+													"code": http.StatusOK,
+													"success": true,
+													"message": "User registration successfull.",
+													"data": timeNow,
+												})
+											} else {
+												ctx.JSON(http.StatusOK, gin.H{
+													"code": http.StatusOK,
+													"success": false,
+													"message": "User registration failed. Please try again later!",
+												})
+											}
+										}
+										
 									} else {
 										ctx.JSON(http.StatusOK, gin.H{
 											"code": http.StatusOK,
 											"success": false,
-											"message": "User registration failed. Please try again later!",
+											"message": "User registration failed.",
 										})
 									}
-									
-								} else {
-									ctx.JSON(http.StatusOK, gin.H{
-										"code": http.StatusOK,
-										"success": false,
-										"message": "User registration failed.",
-									})
 								}
+									
 							}
 						}
 						
@@ -359,6 +393,7 @@ func GetUserByIdHandler(genzDB *sql.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(GetUserById)
 }
 
+
 func EditUserNameHandler(genzDB *sql.DB) gin.HandlerFunc {
 	
 	EditUserName := func(ctx *gin.Context) {
@@ -426,6 +461,7 @@ func EditUserNameHandler(genzDB *sql.DB) gin.HandlerFunc {
 
 	return gin.HandlerFunc(EditUserName)
 }
+
 
 func EditAboutYouHandler(genzDB *sql.DB) gin.HandlerFunc {
 	
@@ -498,6 +534,40 @@ func EditAboutYouHandler(genzDB *sql.DB) gin.HandlerFunc {
 
 	return gin.HandlerFunc(EditAboutYou)
 }
+
+
+func VerifyCodeHandler(genzDB *sql.DB) gin.HandlerFunc {
+
+	verifyCode := func(ctx *gin.Context) {
+		var xGenzToken string
+		var userFromRequest users.UserVerificationCode
+		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
+		if !ok {
+			log.Println("Token not exists.")
+			ctx.JSON(http.StatusOK, gin.H {
+				"code": http.StatusOK,
+				"success": false,
+				"message": "Sorry my friend, Invalid request. We'll fix it ASAP. Please refresh the page or try again later.",
+			})
+		} else {
+			ctx.ShouldBindJSON(&userFromRequest)
+			xGenzToken = xGenzTokenArr[0]
+			var userVerificationCode users.UserVerificationCode
+			log.Println(userVerificationCode)
+			if X_GENZ_TOKEN != xGenzToken {
+				log.Println("ERROR Function EditUserName: Invalid security key", userFromRequest.Email)
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": false,
+					"message": "Sorry my friend, Invalid security key. We'll fix it ASAP. Please refresh the page or try again later.",
+				})
+			}
+		}
+	}
+
+	return gin.HandlerFunc(verifyCode)
+} 
+
 
 func ChangePasswordHandler(genzDB *sql.DB) gin.HandlerFunc {
 
@@ -581,7 +651,8 @@ func ChangePasswordHandler(genzDB *sql.DB) gin.HandlerFunc {
 		return gin.HandlerFunc(ChangePassword)
 
 	}
-func generateUserId(genzDB *sql.DB) (string, error) {
+
+	func generateUserId(genzDB *sql.DB) (string, error) {
 	var user users.User
 	var maxUserId int
 	var finalUserId string
@@ -627,9 +698,21 @@ func checkUserExists(genzDB *sql.DB, email string) bool {
 	return false
 }
 
+
+func checkUserExistsForVerification(genzDB *sql.DB, email string) bool {
+	var rowCount int
+	query := "SELECT COUNT(*) FROM user_verification_code WHERE email = ?"
+	_ = genzDB.QueryRow(query, email).Scan(&rowCount)
+	if rowCount > 0 {
+		return true
+	}
+	return false
+}
+
+
 func sendVerificationCode(verificationCode string, userName string, email string) bool {
-	from := "email"
-	fromPassword := "password"
+	from := "arix2604@gmail.com"
+	fromPassword := "Zxc890@bnm123h4s26us20"
 	toList := []string{email}
 	host := "smtp.gmail.com"
 	port := "587"
@@ -638,7 +721,7 @@ func sendVerificationCode(verificationCode string, userName string, email string
 	"Subject: Verify your email address!\r\n" +
 	"\r\n" +
 	"Hello " + userName + 
-	",\n\n We are happy that you are signed up for GenZ BlogX. To Start exploring, please confirm your email address.\n\n Please use this verification code to complete your sign in: \n" +
+	",\n\n We are happy that you are signed up for GenZ BlogZ. To Start exploring, please confirm your email address.\n\n Please use this verification code to complete your sign in: \n" +
 	verificationCode + "\n\n Welcome to GenZ BlogZ!\n The Genz BlogZ Team"
 	body := []byte(msg)
 	auth := smtp.PlainAuth("", from, fromPassword, host)

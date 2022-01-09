@@ -8,7 +8,7 @@ import (
 type UserVerificationCode struct {
 	VerficationCode string 		`json: "userVerificationCode"`
 	CreatedAt		time.Time 	`json: "createdAt"`
-	email			string		`json: "email"`	
+	Email			string		`json: "email"`	
 }
 
 func NewVerificationCode(verificationCode string, createdAt time.Time, email string) UserVerificationCode {
