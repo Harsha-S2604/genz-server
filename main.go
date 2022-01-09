@@ -27,7 +27,7 @@ func main() {
 	genzDB, dbErr = db.ConnectDB()
 	if dbErr != nil {
 		log.Println("There is an error")
-		panic(dbErr.Error())
+		panic("Database connection failed: " + dbErr.Error())
 	} else {
 		log.Println("Database running on port no.3306.")
 		// start server

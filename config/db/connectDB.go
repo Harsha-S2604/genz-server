@@ -14,7 +14,12 @@ func ConnectDB() (*sql.DB, error) {
 
 	dbURL := userName+":"+password+"@tcp(127.0.0.1:"+port+")/"+dbName
 	db, err := sql.Open("mysql", dbURL)
+	if err != nil {
+		return nil, err
+	}
 
+	// make sure the connection is available
+	err = db.Ping()
 	if err != nil {
 		return nil, err
 	}
