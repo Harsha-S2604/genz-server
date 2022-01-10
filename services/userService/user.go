@@ -580,14 +580,25 @@ func VerifyCodeHandler(genzDB *sql.DB) gin.HandlerFunc {
 							"message": "Verification code expired.",
 						})
 					} else {
-						log.Println("Email verified successfully", userFromRequest.Email)
-						ctx.JSON(http.StatusOK, gin.H {
-							"code": http.StatusOK,
-							"success": true,
-							"message": "Email verified successfully. Please sign in to continue.",
-						})
+						updateIsEmailVerifiedQry := "UPDATE users SET is_email_verified=? WHERE email=?"
+						_, updateIsEmailVerifiedQryErr := genzDB.Exec(updateIsEmailVerifiedQry, true, userFromRequest.Email)
+						if updateIsEmailVerifiedQryErr != nil {
+							log.Println("Email verification error:", updateIsEmailVerifiedQryErr.Error())
+							ctx.JSON(http.StatusOK, gin.H{
+								"code": http.StatusOK,
+								"success": false,
+								"message": "Sorry, something went wrong. Our team is working on it. Please, try again later.",
+							})
+						} else {
+							log.Println("Email verified successfully", userFromRequest.Email)
+							ctx.JSON(http.StatusOK, gin.H {
+								"code": http.StatusOK,
+								"success": true,
+								"message": "Email verified successfully. Please sign in to continue.",
+							})
+						}
 					}
-				} else {
+				} else { 
 					log.Println("Email verification failed", userFromRequest.Email)
 					ctx.JSON(http.StatusOK, gin.H {
 						"code": http.StatusOK,
