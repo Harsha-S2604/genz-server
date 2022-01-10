@@ -6,7 +6,7 @@ import (
 
 // use promoted fields if possible
 type UserVerificationCode struct {
-	VerficationCode string 		`json: "userVerificationCode"`
+	VerificationCode string 	`json: "verificationCode"`
 	CreatedAt		time.Time 	`json: "createdAt"`
 	Email			string		`json: "email"`	
 }

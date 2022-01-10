@@ -553,7 +553,6 @@ func VerifyCodeHandler(genzDB *sql.DB) gin.HandlerFunc {
 			ctx.ShouldBindJSON(&userFromRequest)
 			xGenzToken = xGenzTokenArr[0]
 			var userVerificationCode users.UserVerificationCode
-			log.Println(userVerificationCode)
 			if X_GENZ_TOKEN != xGenzToken {
 				log.Println("ERROR Function EditUserName: Invalid security key", userFromRequest.Email)
 				ctx.JSON(http.StatusOK, gin.H{
@@ -561,6 +560,41 @@ func VerifyCodeHandler(genzDB *sql.DB) gin.HandlerFunc {
 					"success": false,
 					"message": "Sorry my friend, Invalid security key. We'll fix it ASAP. Please refresh the page or try again later.",
 				})
+			} else {
+				getUserResultsErr := genzDB.QueryRow("SELECT * FROM user_verification_code WHERE email=?;", userFromRequest.Email).Scan(&userVerificationCode.VerificationCode, &userVerificationCode.Email, &userVerificationCode.CreatedAt)
+				timeNow := time.Now()
+				timeMinus := timeNow.Add(-1 * time.Hour)
+				if getUserResultsErr != nil {
+					log.Println("Error function verify email:", getUserResultsErr.Error())
+					ctx.JSON(http.StatusOK, gin.H {
+						"code": http.StatusOK,
+						"success": false,
+						"message": "Something went wrong, Our team is working on it. Please try again later.",
+					})
+				} else if userVerificationCode.VerificationCode == userFromRequest.VerificationCode {
+					createdAt := userVerificationCode.CreatedAt
+					if !(createdAt.After(timeMinus)) {
+						ctx.JSON(http.StatusOK, gin.H {
+							"code": http.StatusOK,
+							"success": false,
+							"message": "Verification code expired.",
+						})
+					} else {
+						log.Println("Email verified successfully", userFromRequest.Email)
+						ctx.JSON(http.StatusOK, gin.H {
+							"code": http.StatusOK,
+							"success": true,
+							"message": "Email verified successfully. Please sign in to continue.",
+						})
+					}
+				} else {
+					log.Println("Email verification failed", userFromRequest.Email)
+					ctx.JSON(http.StatusOK, gin.H {
+						"code": http.StatusOK,
+						"success": false,
+						"message": "Invalid verification code. Please enter the correct one.",
+					})
+				}
 			}
 		}
 	}

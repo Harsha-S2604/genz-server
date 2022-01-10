@@ -37,6 +37,9 @@ func SetupRouter(genzDB *sql.DB) *gin.Engine{
 
 		userAPIRouter.POST("/change-passwd", userService.ChangePasswordHandler(genzDB))
 
+		// verifying the email
+		userAPIRouter.POST("/verify", userService.VerifyCodeHandler(genzDB))
+
 	}
 
 	blogAPIRouter := router.Group("api/v1/blogs")
