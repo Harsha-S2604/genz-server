@@ -554,7 +554,7 @@ func VerifyCodeHandler(genzDB *sql.DB) gin.HandlerFunc {
 			xGenzToken = xGenzTokenArr[0]
 			var userVerificationCode users.UserVerificationCode
 			if X_GENZ_TOKEN != xGenzToken {
-				log.Println("ERROR Function EditUserName: Invalid security key", userFromRequest.Email)
+				log.Println("ERROR Function verifyCode: Invalid security key", userFromRequest.Email)
 				ctx.JSON(http.StatusOK, gin.H{
 					"code": http.StatusOK,
 					"success": false,
@@ -612,6 +612,68 @@ func VerifyCodeHandler(genzDB *sql.DB) gin.HandlerFunc {
 
 	return gin.HandlerFunc(verifyCode)
 } 
+
+
+func ReSendVerificationCodeHandler(genzDB *sql.DB) gin.HandlerFunc {
+
+	resendVerificationCode := func(ctx *gin.Context) {
+		var xGenzToken string
+		var userFromRequest users.UserVerificationCode
+		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
+		if !ok {
+			log.Println("Token not exists.")
+			ctx.JSON(http.StatusOK, gin.H {
+				"code": http.StatusOK,
+				"success": false,
+				"message": "Sorry my friend, Invalid request. We'll fix it ASAP. Please refresh the page or try again later.",
+			})
+		} else {
+			ctx.ShouldBindJSON(&userFromRequest)
+			xGenzToken = xGenzTokenArr[0]
+			if X_GENZ_TOKEN != xGenzToken {
+				log.Println("ERROR Function resendVerificationCode: Invalid security key", userFromRequest.Email)
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": false,
+					"message": "Sorry my friend, Invalid security key. We'll fix it ASAP. Please refresh the page or try again later.",
+				})
+			} else {
+				// generate the verification code
+				verificationCode, verificationCodeErr := verification.GenerateSixDigitCode()
+				if verificationCodeErr != nil {
+					ctx.JSON(http.StatusOK, gin.H{
+						"code": http.StatusOK,
+						"success": false,
+						"message": "Sorry, something went wrong. Our team is working on it. Please, try again later.",
+					})
+					return
+				} else {
+					log.Println("verification code", verificationCode)
+					updateVerificationCodeQry := "UPDATE user_verification_code SET verification_code=? WHERE email=?;"
+					_, updateVerificationCodeQryErr := genzDB.Exec(updateVerificationCodeQry, verificationCode, userFromRequest.Email)
+					if updateVerificationCodeQryErr != nil {
+						log.Println("Update verification code error: ", updateVerificationCodeQryErr.Error())
+						ctx.JSON(http.StatusOK, gin.H {
+							"code": http.StatusOK,
+							"success": false,
+							"message": "Sorry, something went wrong. Our team is working on it. Please, try again later.",
+						})
+					} else {
+						log.Println("Updated successfully")
+						ctx.JSON(http.StatusOK, gin.H {
+							"code": http.StatusOK,
+							"success": true,
+							"message": "Verification code has been sent to your email. Please check.",
+						})
+					}
+				}
+			}
+		}
+	}
+	return gin.HandlerFunc(resendVerificationCode)
+
+
+}
 
 
 func ChangePasswordHandler(genzDB *sql.DB) gin.HandlerFunc {
