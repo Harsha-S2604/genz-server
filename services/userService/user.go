@@ -675,6 +675,64 @@ func ReSendVerificationCodeHandler(genzDB *sql.DB) gin.HandlerFunc {
 
 }
 
+func GetVerificationCountHandler(genzDB *sql.DB) gin.HandlerFunc {
+
+	getVerificationCount := func(ctx *gin.Context) {
+		var xGenzToken string
+		var userFromRequest users.UserVerificationCode
+		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
+		if !ok {
+			log.Println("Token not exists.")
+			ctx.JSON(http.StatusOK, gin.H {
+				"code": http.StatusOK,
+				"success": false,
+				"message": "Sorry my friend, Invalid request. We'll fix it ASAP. Please refresh the page or try again later.",
+			})
+		} else {
+			ctx.ShouldBindJSON(&userFromRequest)
+			xGenzToken = xGenzTokenArr[0]
+			if X_GENZ_TOKEN != xGenzToken {
+				log.Println("ERROR Function resendVerificationCode: Invalid security key", userFromRequest.Email)
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": false,
+					"message": "Sorry my friend, Invalid security key. We'll fix it ASAP. Please refresh the page or try again later.",
+				})
+			} else {
+				var userVerificationCode users.UserVerificationCode
+				getCountQry := "SELECT code_sent_count FROM user_verification_code WHERE email=?;"
+
+				getCountQryErr := genzDB.QueryRow(getCountQry, userFromRequest.Email).Scan(&userVerificationCode.CodeSentCount)
+				switch getCountQryErr {
+					case sql.ErrNoRows:
+						log.Println("No rows were returned!", userFromRequest.Email)
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": false,
+							"message": "User not found",
+						})
+					case nil:
+						log.Println("code count fetched for user", userFromRequest.Email)
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": true,
+							"data": userVerificationCode.CodeSentCount,
+						})
+					default:
+						log.Println("ERROR Function getVerificationCount: "+getCountQryErr.Error())
+						ctx.JSON(http.StatusInternalServerError, gin.H{
+							"code": http.StatusInternalServerError,
+							"success": false,
+							"message": "Something went wrong on our side. Our team is working on it. Please try again later.",
+						})
+				}
+
+			}
+		}
+	}
+
+	return gin.HandlerFunc(getVerificationCount)
+}
 
 func ChangePasswordHandler(genzDB *sql.DB) gin.HandlerFunc {
 

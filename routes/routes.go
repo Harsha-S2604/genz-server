@@ -43,6 +43,9 @@ func SetupRouter(genzDB *sql.DB) *gin.Engine{
 		//resend verification code
 		userAPIRouter.POST("/verify/resend", userService.ReSendVerificationCodeHandler(genzDB))
 
+		userAPIRouter.POST("/verify/resend/count", userService.GetVerificationCountHandler(genzDB))
+
+
 	}
 
 	blogAPIRouter := router.Group("api/v1/blogs")
