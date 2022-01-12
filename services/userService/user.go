@@ -290,7 +290,7 @@ func UserRegisterHandler(genzDB *sql.DB) gin.HandlerFunc {
 											}
 										} else {
 											timeNow := time.Now()
-											_, _ = genzDB.ExecContext(ctx, "INSERT INTO user_verification_code VALUES(?, ?, ?);", verificationCode, userFromRequest.Email, timeNow)
+											_, _ = genzDB.Exec("INSERT INTO user_verification_code VALUES(?, ?, ?, ?);", verificationCode, userFromRequest.Email, timeNow, 0)
 											isSent := sendVerificationCode(verificationCode, userFromRequest.Name, userFromRequest.Email)
 											if isSent {
 												ctx.JSON(http.StatusOK, gin.H{
@@ -561,7 +561,7 @@ func VerifyCodeHandler(genzDB *sql.DB) gin.HandlerFunc {
 					"message": "Sorry my friend, Invalid security key. We'll fix it ASAP. Please refresh the page or try again later.",
 				})
 			} else {
-				getUserResultsErr := genzDB.QueryRow("SELECT * FROM user_verification_code WHERE email=?;", userFromRequest.Email).Scan(&userVerificationCode.VerificationCode, &userVerificationCode.Email, &userVerificationCode.CreatedAt)
+				getUserResultsErr := genzDB.QueryRow("SELECT * FROM user_verification_code WHERE email=?;", userFromRequest.Email).Scan(&userVerificationCode.VerificationCode, &userVerificationCode.Email, &userVerificationCode.CreatedAt, &userVerificationCode.CodeSentCount)
 				timeNow := time.Now()
 				timeMinus := timeNow.Add(-1 * time.Hour)
 				if getUserResultsErr != nil {
@@ -591,6 +591,8 @@ func VerifyCodeHandler(genzDB *sql.DB) gin.HandlerFunc {
 							})
 						} else {
 							log.Println("Email verified successfully", userFromRequest.Email)
+							deleteQry := "DELETE FROM user_verification_code WHERE email=?"
+							_, _ = genzDB.Exec(deleteQry, userFromRequest.Email)
 							ctx.JSON(http.StatusOK, gin.H {
 								"code": http.StatusOK,
 								"success": true,
@@ -649,8 +651,15 @@ func ReSendVerificationCodeHandler(genzDB *sql.DB) gin.HandlerFunc {
 					return
 				} else {
 					log.Println("verification code", verificationCode)
-					updateVerificationCodeQry := "UPDATE user_verification_code SET verification_code=? WHERE email=?;"
-					_, updateVerificationCodeQryErr := genzDB.Exec(updateVerificationCodeQry, verificationCode, userFromRequest.Email)
+					var codeCount int
+					var userName string
+					getNameQry := "SELECT name FROM users WHERE email=?;"
+					_ = genzDB.QueryRow(getNameQry, userFromRequest.Email).Scan(&userName)
+					getCountQry := "SELECT code_sent_count FROM user_verification_code WHERE email=?;"
+					_ = genzDB.QueryRow(getCountQry, userFromRequest.Email).Scan(&codeCount)
+					timeNow := time.Now()
+					updateVerificationCodeQry := "UPDATE user_verification_code SET verification_code=?, code_sent_count=?, created_at=? WHERE email=?;"
+					_, updateVerificationCodeQryErr := genzDB.Exec(updateVerificationCodeQry, verificationCode, codeCount + 1, timeNow, userFromRequest.Email)
 					if updateVerificationCodeQryErr != nil {
 						log.Println("Update verification code error: ", updateVerificationCodeQryErr.Error())
 						ctx.JSON(http.StatusOK, gin.H {
@@ -659,12 +668,24 @@ func ReSendVerificationCodeHandler(genzDB *sql.DB) gin.HandlerFunc {
 							"message": "Sorry, something went wrong. Our team is working on it. Please, try again later.",
 						})
 					} else {
-						log.Println("Updated successfully")
-						ctx.JSON(http.StatusOK, gin.H {
-							"code": http.StatusOK,
-							"success": true,
-							"message": "Verification code has been sent to your email. Please check.",
-						})
+						isSent := sendVerificationCode(verificationCode, userName, userFromRequest.Email)
+						var dataToSend users.UserVerificationCode
+						dataToSend.CreatedAt = timeNow
+						dataToSend.CodeSentCount = codeCount
+						if isSent {
+							ctx.JSON(http.StatusOK, gin.H{
+								"code": http.StatusOK,
+								"success": true,
+								"message": "A new verification code has been sent to your email. Please check it.",
+								"data": dataToSend,
+							})
+						} else {
+							ctx.JSON(http.StatusOK, gin.H{
+								"code": http.StatusOK,
+								"success": false,
+								"message": "Sorry something went wrong. Our team is working on it. Please try again later.",
+							})
+						}
 					}
 				}
 			}
@@ -701,7 +722,6 @@ func GetVerificationCountHandler(genzDB *sql.DB) gin.HandlerFunc {
 			} else {
 				var userVerificationCode users.UserVerificationCode
 				getCountQry := "SELECT code_sent_count FROM user_verification_code WHERE email=?;"
-
 				getCountQryErr := genzDB.QueryRow(getCountQry, userFromRequest.Email).Scan(&userVerificationCode.CodeSentCount)
 				switch getCountQryErr {
 					case sql.ErrNoRows:
