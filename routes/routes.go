@@ -27,6 +27,9 @@ func SetupRouter(genzDB *sql.DB) *gin.Engine{
 		// register user
 		userAPIRouter.POST("/register", userService.UserRegisterHandler(genzDB))
 
+		// get user by email
+		userAPIRouter.POST("/check/email", userService.CheckUserByEmailHandler(genzDB))
+
 		// get user details by id
 		userAPIRouter.GET("/profile", userService.GetUserByIdHandler(genzDB))
 
@@ -39,6 +42,9 @@ func SetupRouter(genzDB *sql.DB) *gin.Engine{
 
 		// verifying the email
 		userAPIRouter.POST("/verify", userService.VerifyCodeHandler(genzDB))
+
+		// send verification code
+		userAPIRouter.POST("/verify/send", userService.SendVerificationCodeHandler(genzDB))
 
 		//resend verification code
 		userAPIRouter.POST("/verify/resend", userService.ReSendVerificationCodeHandler(genzDB))

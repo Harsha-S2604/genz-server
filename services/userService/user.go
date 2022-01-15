@@ -272,7 +272,7 @@ func UserRegisterHandler(genzDB *sql.DB) gin.HandlerFunc {
 													"message": "User registered failed.",
 												})
 											} else {
-												isSent := sendVerificationCode(verificationCode, userFromRequest.Name, userFromRequest.Email)
+												isSent := sendVerificationCode(verificationCode, userFromRequest.Email)
 												if isSent {
 													ctx.JSON(http.StatusOK, gin.H{
 														"code": http.StatusOK,
@@ -291,7 +291,7 @@ func UserRegisterHandler(genzDB *sql.DB) gin.HandlerFunc {
 										} else {
 											timeNow := time.Now()
 											_, _ = genzDB.Exec("INSERT INTO user_verification_code VALUES(?, ?, ?, ?);", verificationCode, userFromRequest.Email, timeNow, 0)
-											isSent := sendVerificationCode(verificationCode, userFromRequest.Name, userFromRequest.Email)
+											isSent := sendVerificationCode(verificationCode, userFromRequest.Email)
 											if isSent {
 												ctx.JSON(http.StatusOK, gin.H{
 													"code": http.StatusOK,
@@ -393,6 +393,169 @@ func GetUserByIdHandler(genzDB *sql.DB) gin.HandlerFunc {
 	return gin.HandlerFunc(GetUserById)
 }
 
+func CheckUserByEmailHandler(genzDB *sql.DB) gin.HandlerFunc {
+
+	CheckUserByEmail := func(ctx *gin.Context) {
+		
+
+		var xGenzToken string
+		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
+		if !ok {
+			log.Println("Token not exists.")
+			ctx.JSON(http.StatusOK, gin.H {
+				"code": http.StatusOK,
+				"success": false,
+				"message": "Sorry dude, something went wrong. Our team is working on it. Please try again later.",
+			})
+		} else {
+			xGenzToken = xGenzTokenArr[0]
+			var userFromRequest users.User
+			ctx.ShouldBindJSON(&userFromRequest)
+			if X_GENZ_TOKEN != xGenzToken {
+				log.Println("ERROR Function GetUserByEmail: Invalid security key", userFromRequest.Email)
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": false,
+					"message": "Sorry dude, something went wrong. Our team is working on it. Please try again later.",
+				})
+			} else {
+				isExists := checkUserExists(genzDB, userFromRequest.Email)
+				if isExists {
+					log.Println("User already exist")
+					ctx.JSON(http.StatusOK, gin.H {
+						"code": http.StatusOK,
+						"success": false,
+						"message": "User already exist. Please sign in to continue.",
+					})
+				} else {
+					ctx.JSON(http.StatusOK, gin.H {
+						"code": http.StatusOK,
+						"success": true,
+						"message": "",
+					})
+				} 
+			}
+
+		}
+
+	}
+
+	return gin.HandlerFunc(CheckUserByEmail)
+}
+
+func SendVerificationCodeHandler(genzDB *sql.DB) gin.HandlerFunc {
+
+	sendVerificationCode := func(ctx *gin.Context) {
+		var xGenzToken string
+		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
+		if !ok {
+			log.Println("Token not exists.")
+			ctx.JSON(http.StatusOK, gin.H {
+				"code": http.StatusOK,
+				"success": false,
+				"message": "Sorry dude, something went wrong. Our team is working on it. Please try again later.",
+			})
+		} else {
+			xGenzToken = xGenzTokenArr[0]
+			var userFromRequest users.User
+			ctx.ShouldBindJSON(&userFromRequest)
+			if X_GENZ_TOKEN != xGenzToken {
+				log.Println("ERROR Function sendVerificationCode: Invalid security key", userFromRequest.Email)
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": false,
+					"message": "Sorry dude, something went wrong. Our team is working on it. Please try again later.",
+				})
+			} else {
+				log.Println("Send verification code.")
+				isUserExist := checkUserExistsForVerification(genzDB, userFromRequest.Email)
+				if isUserExist {
+					var codeCount int
+					getCountQry := "SELECT code_sent_count FROM user_verification_code WHERE email=?;"
+					_ = genzDB.QueryRow(getCountQry, userFromRequest.Email).Scan(&codeCount)
+					log.Println(codeCount)
+					if codeCount >= 2 {
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": false,
+							"message": "You have exceeded the maximum number of attempts. Please try again later.",
+						})
+						return
+					}
+
+					// generate the verification code
+					verificationCode, verificationCodeErr := verification.GenerateSixDigitCode()
+					if verificationCodeErr != nil {
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": false,
+							"message": "Sorry, something went wrong. Our team is working on it. Please, try again later.",
+						})
+						return
+					}
+					timeNow := time.Now()
+					updateVerificationCodeQry := "UPDATE user_verification_code SET verification_code=?, code_sent_count=?, created_at=? WHERE email=?;"
+					_, updateVerificationCodeQryErr := genzDB.Exec(updateVerificationCodeQry, verificationCode, codeCount + 1, timeNow, userFromRequest.Email)
+					if updateVerificationCodeQryErr != nil {
+						log.Println("Update verification code error: ", updateVerificationCodeQryErr.Error())
+						ctx.JSON(http.StatusOK, gin.H {
+							"code": http.StatusOK,
+							"success": false,
+							"message": "Sorry, something went wrong. Our team is working on it. Please, try again later.",
+						})
+						return
+					}
+					isSent := sendVerificationCode(verificationCode, userFromRequest.Email)
+					if isSent {
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": true,
+							"message": "A new verification code has been sent to your email. Please check it.",
+							"data": codeCount,
+						})
+					} else {
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": false,
+							"message": "Sorry something went wrong. Our team is working on it. Please try again later.",
+						})
+					}
+				} else {
+					timeNow := time.Now()
+					verificationCode, verificationCodeErr := verification.GenerateSixDigitCode()
+					if verificationCodeErr != nil {
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": false,
+							"message": "Sorry, something went wrong. Our team is working on it. Please, try again later.",
+						})
+						return
+					}
+					_, _ = genzDB.Exec("INSERT INTO user_verification_code VALUES(?, ?, ?, ?);", verificationCode, userFromRequest.Email, timeNow, 0)
+					isSent := sendVerificationCode(verificationCode, userFromRequest.Email)
+					if isSent {
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": true,
+							"message": "verification code has been sent to your account.",
+							"data": timeNow,
+						})
+					} else {
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": false,
+							"message": "Sorry, Something went wrong. Our team is working on it. Please try again later.",
+						})
+					}
+
+				}
+			}
+		}
+	}
+
+	return gin.HandlerFunc(sendVerificationCode)
+
+}
 
 func EditUserNameHandler(genzDB *sql.DB) gin.HandlerFunc {
 	
@@ -640,6 +803,18 @@ func ReSendVerificationCodeHandler(genzDB *sql.DB) gin.HandlerFunc {
 					"message": "Sorry my friend, Invalid security key. We'll fix it ASAP. Please refresh the page or try again later.",
 				})
 			} else {
+				 
+				var codeCount int
+				getCountQry := "SELECT code_sent_count FROM user_verification_code WHERE email=?;"
+				_ = genzDB.QueryRow(getCountQry, userFromRequest.Email).Scan(&codeCount)
+				if codeCount >= 3 {
+					ctx.JSON(http.StatusOK, gin.H{
+						"code": http.StatusOK,
+						"success": false,
+						"message": "You have exceeded the maximum number of attempts. Please register again.",
+					})
+					return
+				}
 				// generate the verification code
 				verificationCode, verificationCodeErr := verification.GenerateSixDigitCode()
 				if verificationCodeErr != nil {
@@ -649,43 +824,35 @@ func ReSendVerificationCodeHandler(genzDB *sql.DB) gin.HandlerFunc {
 						"message": "Sorry, something went wrong. Our team is working on it. Please, try again later.",
 					})
 					return
+				}
+				timeNow := time.Now()
+				updateVerificationCodeQry := "UPDATE user_verification_code SET verification_code=?, code_sent_count=?, created_at=? WHERE email=?;"
+				_, updateVerificationCodeQryErr := genzDB.Exec(updateVerificationCodeQry, verificationCode, codeCount + 1, timeNow, userFromRequest.Email)
+				if updateVerificationCodeQryErr != nil {
+					log.Println("Update verification code error: ", updateVerificationCodeQryErr.Error())
+					ctx.JSON(http.StatusOK, gin.H {
+						"code": http.StatusOK,
+						"success": false,
+						"message": "Sorry, something went wrong. Our team is working on it. Please, try again later.",
+					})
 				} else {
-					log.Println("verification code", verificationCode)
-					var codeCount int
-					var userName string
-					getNameQry := "SELECT name FROM users WHERE email=?;"
-					_ = genzDB.QueryRow(getNameQry, userFromRequest.Email).Scan(&userName)
-					getCountQry := "SELECT code_sent_count FROM user_verification_code WHERE email=?;"
-					_ = genzDB.QueryRow(getCountQry, userFromRequest.Email).Scan(&codeCount)
-					timeNow := time.Now()
-					updateVerificationCodeQry := "UPDATE user_verification_code SET verification_code=?, code_sent_count=?, created_at=? WHERE email=?;"
-					_, updateVerificationCodeQryErr := genzDB.Exec(updateVerificationCodeQry, verificationCode, codeCount + 1, timeNow, userFromRequest.Email)
-					if updateVerificationCodeQryErr != nil {
-						log.Println("Update verification code error: ", updateVerificationCodeQryErr.Error())
-						ctx.JSON(http.StatusOK, gin.H {
+					isSent := sendVerificationCode(verificationCode, userFromRequest.Email)
+					var dataToSend users.UserVerificationCode
+					dataToSend.CreatedAt = timeNow
+					dataToSend.CodeSentCount = codeCount
+					if isSent {
+						ctx.JSON(http.StatusOK, gin.H{
 							"code": http.StatusOK,
-							"success": false,
-							"message": "Sorry, something went wrong. Our team is working on it. Please, try again later.",
+							"success": true,
+							"message": "A new verification code has been sent to your email. Please check it.",
+							"data": dataToSend,
 						})
 					} else {
-						isSent := sendVerificationCode(verificationCode, userName, userFromRequest.Email)
-						var dataToSend users.UserVerificationCode
-						dataToSend.CreatedAt = timeNow
-						dataToSend.CodeSentCount = codeCount
-						if isSent {
-							ctx.JSON(http.StatusOK, gin.H{
-								"code": http.StatusOK,
-								"success": true,
-								"message": "A new verification code has been sent to your email. Please check it.",
-								"data": dataToSend,
-							})
-						} else {
-							ctx.JSON(http.StatusOK, gin.H{
-								"code": http.StatusOK,
-								"success": false,
-								"message": "Sorry something went wrong. Our team is working on it. Please try again later.",
-							})
-						}
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": false,
+							"message": "Sorry something went wrong. Our team is working on it. Please try again later.",
+						})
 					}
 				}
 			}
@@ -895,7 +1062,7 @@ func checkUserExistsForVerification(genzDB *sql.DB, email string) bool {
 }
 
 
-func sendVerificationCode(verificationCode string, userName string, email string) bool {
+func sendVerificationCode(verificationCode string, email string) bool {
 	from := "arix2604@gmail.com"
 	fromPassword := "Zxc890@bnm123h4s26us20"
 	toList := []string{email}
@@ -905,7 +1072,7 @@ func sendVerificationCode(verificationCode string, userName string, email string
 	msg :="To: "+email+"\r\n" +
 	"Subject: Verify your email address!\r\n" +
 	"\r\n" +
-	"Hello " + userName + 
+	"Hello " + 
 	",\n\n We are happy that you are signed up for GenZ BlogZ. To Start exploring, please confirm your email address.\n\n Please use this verification code to complete your sign in: \n" +
 	verificationCode + "\n\n Welcome to GenZ BlogZ!\n The Genz BlogZ Team"
 	body := []byte(msg)
