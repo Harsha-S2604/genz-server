@@ -7,11 +7,10 @@ type User struct {
 	Email 			string `json: "email"`
 	Password 		string `json: "password"`
 	Profile			string `json: "profile"`
-	IsEmailVerified bool   `json: "isEmailVerified"`
 }
 
-func New(userId string, name string, email string, password string, profile string, isEmailVerified bool) User {
-	return User{userId, name, email, password, profile, isEmailVerified}
+func New(userId string, name string, email string, password string, profile string) User {
+	return User{userId, name, email, password, profile}
 }
 
 func (u *User) GetUserId() string {
@@ -30,10 +29,6 @@ func (u *User) GetPassword() string {
 	return u.Password
 }
 
-func (u *User) GetIsEmailVerified() bool {
-	return u.IsEmailVerified
-}
-
 func (u *User) SetUserId(userId string) {
 	u.UserId = userId
 }
@@ -48,8 +43,4 @@ func (u *User) SetEmail(email string) {
 
 func (u *User) SetPassword(password string) {
 	u.Password = password
-}
-
-func (u *User) SetIsEmailVerified(isEmailVerified bool) {
-	u.IsEmailVerified = isEmailVerified
 }

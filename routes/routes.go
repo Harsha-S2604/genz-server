@@ -40,17 +40,8 @@ func SetupRouter(genzDB *sql.DB) *gin.Engine{
 
 		userAPIRouter.POST("/change-passwd", userService.ChangePasswordHandler(genzDB))
 
-		// verifying the email
-		userAPIRouter.POST("/verify", userService.VerifyCodeHandler(genzDB))
-
 		// send verification code
 		userAPIRouter.POST("/verify/send", userService.SendVerificationCodeHandler(genzDB))
-
-		//resend verification code
-		userAPIRouter.POST("/verify/resend", userService.ReSendVerificationCodeHandler(genzDB))
-
-		userAPIRouter.POST("/verify/resend/count", userService.GetVerificationCountHandler(genzDB))
-
 
 	}
 
