@@ -65,6 +65,9 @@ func SetupRouter(genzDB *sql.DB) *gin.Engine{
 		// add favorites blog
 		blogAPIRouter.GET("/saved", blogService.AddSavedBlogsHandler(genzDB))
 
+		// upload story image
+		blogAPIRouter.POST("/story/image/upload", blogService.UploadStoryImageHandler(genzDB))
+
 	}
 
 	return router
