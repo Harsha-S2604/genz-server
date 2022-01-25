@@ -52,14 +52,21 @@ func AddBlogHandler(genzDB *sql.DB) gin.HandlerFunc {
 				})
 				return
 			}
-			err := ctx.ShouldBindJSON(&blog)
-			if(err != nil) {
-				log.Println("ERROR FUNCTION ADD BLOG:", err.Error())
+			bindErr := ctx.ShouldBindJSON(&blog)
+			if(bindErr != nil) {
+				log.Println("Bind error:", bindErr.Error())
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": false,
+					"message": "Sorry, Something went wrong. Our team is working on it. Please refresh the page or try again later.",
+				})
+				return
 			}
 			
 			var id int
 			tx, beginErr := genzDB.Begin()
 			if beginErr != nil {
+				log.Println("Begin error:", beginErr.Error())
 				ctx.JSON(http.StatusOK, gin.H{
 					"code": http.StatusOK,
 					"success": false,
@@ -72,6 +79,7 @@ func AddBlogHandler(genzDB *sql.DB) gin.HandlerFunc {
 				timeNow := time.Now()
 				stmt, stmtErr := tx.Prepare("INSERT INTO blog(blog_title, blog_description, blog_content, blog_created_at, blog_last_updated_at, blog_is_draft, blog_total_views, blog_total_likes, email) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING blog_id;")
 				if stmtErr != nil {
+					log.Println("Statement error:", stmtErr.Error())
 					ctx.JSON(http.StatusOK, gin.H{
 						"code": http.StatusOK,
 						"success": false,
@@ -95,6 +103,7 @@ func AddBlogHandler(genzDB *sql.DB) gin.HandlerFunc {
 				).Scan(&id)
 
 				if stmtErr != nil {
+					log.Println("Statement error:", stmtErr.Error())
 					ctx.JSON(http.StatusOK, gin.H{
 						"code": http.StatusOK,
 						"success": false,
@@ -516,25 +525,33 @@ func UploadStoryImageHandler(genzDB *sql.DB) gin.HandlerFunc {
             	formFile := form.File["image"]
 				blogId := form.Value["blogId"]
 				userId := form.Value["userId"]
-				log.Println(blogId, userId)
-
-				isUploadedToS3, isUploadedToS3Err := uploadImageToS3(formFile[0], userId[0], blogId[0])
-				if isUploadedToS3Err != nil {
-					log.Println("Failed To Upload to S3", isUploadedToS3Err.Error())
+				if !(len(formFile) == 0) {
+					isUploadedToS3, isUploadedToS3Err := uploadImageToS3(formFile[0], userId[0], blogId[0])
+					if isUploadedToS3Err != nil {
+						log.Println("Failed To Upload to S3", isUploadedToS3Err.Error())
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": false,
+							"message": "Sorry something went wrong. Our team is working on it. Please try again later.",
+						})
+						return
+					}
+					if isUploadedToS3 {
+						ctx.JSON(http.StatusOK, gin.H{
+							"code": http.StatusOK,
+							"success": true,
+							"message": "Successfully uploaded",
+						})
+					}
+				} else {
 					ctx.JSON(http.StatusOK, gin.H{
 						"code": http.StatusOK,
 						"success": false,
-						"message": "Sorry something went wrong. Our team is working on it. Please try again later.",
-					})
-					return
-				}
-				if isUploadedToS3 {
-					ctx.JSON(http.StatusOK, gin.H{
-						"code": http.StatusOK,
-						"success": true,
-						"message": "Successfully uploaded",
+						"message": "Please provide the story image",
 					})
 				}
+
+				
 				
 			}
 		}
@@ -565,7 +582,7 @@ func uploadImageToS3(img *multipart.FileHeader, userId string, blogId string)(bo
 
 	size := img.Size
 	buffer := make([]byte, size)
-	key := "genz_story_image/"+userId+"/"+blogId
+	key := "genz_story_image/"+blogId
 	f.Read(buffer)
 	fileBytes := bytes.NewReader(buffer)
 	input := &s3.PutObjectInput{
