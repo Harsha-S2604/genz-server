@@ -6,7 +6,7 @@ import (
 )
 
 type Blog struct {
-	BlogID 			  int64 		`json: blogId`
+	BlogID 			  int 		`json: blogId`
 	BlogTitle 		  string 		`json: blogTitle`
 	BlogDescription   string 		`json: blogDescription`
 	BlogContent 	  string 		`json: blogContent`
@@ -15,6 +15,7 @@ type Blog struct {
 	BlogIsDraft		  bool			`json: blogIsDraft`
 	BlogTotalViews	  int64			`json: blogTotalViews`
 	BlogTotalLikes	  int64			`json: blogTotalLikes`
+	BlogImage		  string		`json: blogImage`
 	User			  users.User	`json: user`
 }
 

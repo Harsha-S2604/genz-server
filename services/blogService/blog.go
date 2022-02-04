@@ -7,17 +7,13 @@ import (
 	"time"
 	"strconv"
 	"mime/multipart"
-	"context"
-	"bytes"
 
 	"github.com/Harsha-S2604/genz-server/models/blogs"
 	"github.com/Harsha-S2604/genz-server/utilities/verification"
+	"github.com/Harsha-S2604/genz-server/services/cloudservice/aws/s3"
 
 
 	"github.com/gin-gonic/gin"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
 type ImageForm struct {
@@ -64,7 +60,7 @@ func AddBlogHandler(genzDB *sql.DB) gin.HandlerFunc {
 
 		{
 			timeNow := time.Now()
-			stmt, stmtErr := tx.Prepare("INSERT INTO blog(blog_title, blog_description, blog_content, blog_created_at, blog_last_updated_at, blog_is_draft, blog_total_views, blog_total_likes, email) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING blog_id;")
+			stmt, stmtErr := tx.Prepare("INSERT INTO blog(blog_title, blog_description, blog_content, blog_created_at, blog_last_updated_at, blog_is_draft, blog_total_views, blog_total_likes, blog_image, email) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING blog_id;")
 			if stmtErr != nil {
 				log.Println("Statement error:", stmtErr.Error())
 				ctx.JSON(http.StatusOK, gin.H{
@@ -85,7 +81,8 @@ func AddBlogHandler(genzDB *sql.DB) gin.HandlerFunc {
 				timeNow, 
 				blog.BlogIsDraft, 
 				blog.BlogTotalViews, 
-				blog.BlogTotalLikes, 
+				blog.BlogTotalLikes,
+				blog.BlogImage, 
 				blog.User.Email,
 			).Scan(&id)
 
@@ -153,17 +150,21 @@ func GetBlogByIDHandler(genzDB *sql.DB) gin.HandlerFunc {
 		isGetDraft := queryParams["get_draft"][0]
 		var blog blogs.Blog
 
-		getResultQuery := genzDB.QueryRow("SELECT * FROM blog WHERE blog_id=? AND blog_is_draft=?", blogIdFromReq, isGetDraft).Scan(&blog.BlogID, &blog.BlogTitle, &blog.BlogDescription, &blog.BlogContent, &blog.BlogCreatedAt, &blog.BlogLastUpdatedAt, &blog.BlogIsDraft, &blog.BlogTotalViews, &blog.BlogTotalLikes, &blog.User.Email)
+		getResultQuery := genzDB.QueryRow("SELECT * FROM blog WHERE blog_id=? AND blog_is_draft=?", blogIdFromReq, isGetDraft).Scan(&blog.BlogID, &blog.BlogTitle, &blog.BlogDescription, &blog.BlogContent, &blog.BlogCreatedAt, &blog.BlogLastUpdatedAt, &blog.BlogIsDraft, &blog.BlogTotalViews, &blog.BlogTotalLikes, &blog.BlogImage, &blog.User.Email)
 		switch getResultQuery {
 			case sql.ErrNoRows:
-				log.Println("No rows were returned!", blogIdFromReq)
 				ctx.JSON(http.StatusOK, gin.H{
 					"code": http.StatusOK,
 					"success": false,
 					"message": "Blog not found",
 				})
 			case nil:
-				log.Println("Blog fetched.", blogIdFromReq)
+				blogIdStr := strconv.Itoa(blog.BlogID)
+				blogImageObj, blogImageObjErr := s3.GetObjectFromS3(blogIdStr)
+				// fmt.Println(blogImageObjErr.Error())
+				if blogImageObjErr == nil {
+					blog.BlogImage = blogImageObj
+				}
 				ctx.JSON(http.StatusOK, gin.H{
 					"code": http.StatusOK,
 					"success": true,
@@ -215,7 +216,7 @@ func GetAllBlogsHandler(genzDB *sql.DB) gin.HandlerFunc {
 		} 
 		for blogRows.Next() {
 			var blogObj blogs.Blog
-			if blogErr := blogRows.Scan(&blogObj.BlogID, &blogObj.BlogTitle, &blogObj.BlogDescription, &blogObj.BlogContent, &blogObj.BlogCreatedAt, &blogObj.BlogLastUpdatedAt, &blogObj.BlogIsDraft, &blogObj.BlogTotalViews, &blogObj.BlogTotalLikes, &blogObj.User.Email); blogErr != nil {
+			if blogErr := blogRows.Scan(&blogObj.BlogID, &blogObj.BlogTitle, &blogObj.BlogDescription, &blogObj.BlogContent, &blogObj.BlogCreatedAt, &blogObj.BlogLastUpdatedAt, &blogObj.BlogIsDraft, &blogObj.BlogTotalViews, &blogObj.BlogTotalLikes, &blogObj.BlogImage, &blogObj.User.Email); blogErr != nil {
 				log.Println("ERROR function GetAllBlog blogErr:", blogErr.Error())
 				ctx.JSON(http.StatusOK, gin.H{
 					"code": http.StatusOK,
@@ -223,6 +224,11 @@ func GetAllBlogsHandler(genzDB *sql.DB) gin.HandlerFunc {
 					"message": "Sorry, Something went wrong. Our team is working on it. Please try again later.",
 				})
 				return
+			}
+			blogIdStr := strconv.Itoa(blogObj.BlogID)
+			blogImageObj, blogImageObjErr := s3.GetObjectFromS3(blogIdStr)
+			if blogImageObjErr == nil {
+				blogObj.BlogImage = blogImageObj
 			}
 
 			blogsArr = append(blogsArr, blogObj)
@@ -332,7 +338,7 @@ func FetchRecentArticlesHandler(genzDB *sql.DB) gin.HandlerFunc {
 		var recentArticlesArr []blogs.Blog
 		for recentArticlesRows.Next() {
 			var blogObj blogs.Blog
-			if blogErr := recentArticlesRows.Scan(&blogObj.BlogID, &blogObj.BlogTitle, &blogObj.BlogDescription, &blogObj.BlogContent, &blogObj.BlogCreatedAt, &blogObj.BlogLastUpdatedAt, &blogObj.BlogIsDraft, &blogObj.BlogTotalViews, &blogObj.BlogTotalLikes, &blogObj.User.Email); blogErr != nil {
+			if blogErr := recentArticlesRows.Scan(&blogObj.BlogID, &blogObj.BlogTitle, &blogObj.BlogDescription, &blogObj.BlogContent, &blogObj.BlogCreatedAt, &blogObj.BlogLastUpdatedAt, &blogObj.BlogIsDraft, &blogObj.BlogTotalViews, &blogObj.BlogTotalLikes, &blogObj.BlogImage, &blogObj.User.Email); blogErr != nil {
 				log.Println("ERROR function FetchRecentArticles:", blogErr.Error())
 				ctx.JSON(http.StatusOK, gin.H{
 					"code": http.StatusOK,
@@ -340,6 +346,11 @@ func FetchRecentArticlesHandler(genzDB *sql.DB) gin.HandlerFunc {
 					"message": "Sorry, Something went wrong. Our team is working on it. Please try again later.",
 				})
 				return
+			}
+			blogIdStr := strconv.Itoa(blogObj.BlogID)
+			blogImageObj, blogImageObjErr := s3.GetObjectFromS3(blogIdStr)
+			if blogImageObjErr == nil {
+				blogObj.BlogImage = blogImageObj
 			}
 			recentArticlesArr = append(recentArticlesArr, blogObj)
 		}
@@ -457,7 +468,7 @@ func UploadStoryImageHandler(genzDB *sql.DB) gin.HandlerFunc {
 		blogId := form.Value["blogId"]
 		userId := form.Value["userId"]
 		if !(len(formFile) == 0) {
-			isUploadedToS3, isUploadedToS3Err := uploadImageToS3(formFile[0], userId[0], blogId[0])
+			isUploadedToS3, isUploadedToS3Err := s3.UploadImageToS3(formFile[0], userId[0], blogId[0])
 			if isUploadedToS3Err != nil {
 				log.Println("Failed To Upload to S3", isUploadedToS3Err.Error())
 				ctx.JSON(http.StatusOK, gin.H{
@@ -487,44 +498,4 @@ func UploadStoryImageHandler(genzDB *sql.DB) gin.HandlerFunc {
 	}
 
 	return gin.HandlerFunc(uploadStoryImage)
-}
-
-func uploadImageToS3(img *multipart.FileHeader, userId string, blogId string)(bool, error) {
-
-	// load the configuration file
-	cfg, cfgErr := config.LoadDefaultConfig(context.TODO())
-	if cfgErr != nil {
-		return false, cfgErr
-	}
-
-	// create a AWS S3 client using "cfg" variable
-	client := s3.NewFromConfig(cfg)
-
-
-
-	f, fileErr := img.Open()
-	if fileErr != nil {
-		return false, fileErr
-	}
-	defer f.Close()
-
-	size := img.Size
-	buffer := make([]byte, size)
-	key := "genz_story_image/"+blogId
-	f.Read(buffer)
-	fileBytes := bytes.NewReader(buffer)
-	input := &s3.PutObjectInput{
-		Bucket: aws.String("genztest"),
-		Key:    aws.String(key),
-		Body:   fileBytes,
-	}
-
-	response, responseErr := client.PutObject(context.TODO(), input)
-
-	if responseErr != nil {
-		return false, responseErr
-	}
-
-	log.Println(response)
-	return true, nil
 }

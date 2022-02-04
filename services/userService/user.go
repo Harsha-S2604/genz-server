@@ -38,10 +38,6 @@ type ChangePasswordStruct struct {
 	ConfirmPasswd	string	`json: confirmPasswd`
 }
 
-var (
-	X_GENZ_TOKEN = "4439EA5BDBA8B179722265789D029477"
-)
-
 func ValidateUserLoginHandler(genzDB *sql.DB) gin.HandlerFunc {
 	ValidateUserLogin := func(ctx *gin.Context) {
 		isValidToken, msg := verification.VerifyInternalKey(ctx)
