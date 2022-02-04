@@ -14,7 +14,7 @@ func SetupRouter(genzDB *sql.DB) *gin.Engine{
 	
 	router := gin.Default()
 	config := cors.Config{
-		AllowOrigins: []string{"http://localhost:3000"},
+		AllowOrigins: []string{"http://localhost:8081"},
 		AllowHeaders:     []string{"Origin", "x-genz-token", "content-type"},
 	}
 	router.Use(cors.New(config))
