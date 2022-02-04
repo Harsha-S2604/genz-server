@@ -44,49 +44,31 @@ var (
 
 func ValidateUserLoginHandler(genzDB *sql.DB) gin.HandlerFunc {
 	ValidateUserLogin := func(ctx *gin.Context) {
-		var userFromRequest users.User
-		var xGenzToken string 
-		user := new(users.User);
-		resultsCount := 0
-		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
-
-		if !ok {
-			log.Println("Token not exists")
+		isValidToken, msg := verification.VerifyInternalKey(ctx)
+		if !isValidToken {
 			ctx.JSON(http.StatusOK, gin.H{
 				"code": http.StatusOK,
 				"success": false,
-				"message": "Sorry my friend, Invalid request. We'll fix it ASAP. Please refresh the page or try again later.",
-			})
-			return
-		} else {
-			xGenzToken = xGenzTokenArr[0]
-			ctx.ShouldBindJSON(&userFromRequest)
-		} 
-
-		if X_GENZ_TOKEN != xGenzToken {
-			log.Println("ERROR Function ValidateUserLogin: Invalid security key", userFromRequest.Email)
-			ctx.JSON(http.StatusOK, gin.H{
-				"code": http.StatusOK,
-				"success": false,
-				"message": "Sorry my friend, Invalid security key. We'll fix it ASAP. Please refresh the page or try again later.",
+				"message": msg,
 			})
 			return
 		}
-		
 
+		var userFromRequest users.User
+		user := new(users.User);
+		resultsCount := 0		
+		ctx.ShouldBindJSON(&userFromRequest)
 		// validate email and hash the password
-		isValidEmail, err := validations.ValidateUserEmail(userFromRequest.Email)
+		isValidEmail, isValidEmailErr := validations.ValidateUserEmail(userFromRequest.Email)
 		hashedPassword := hashing.HashUserPassword(userFromRequest.Password)
-		if err != nil {
-			log.Println("ERROR Function ValidateUserLogin: ", err.Error(), userFromRequest.Email)
+		if !isValidEmail && isValidEmailErr != nil {
+			log.Println("ERROR Function ValidateUserLogin: ", isValidEmailErr.Error(), userFromRequest.Email)
 			ctx.JSON(http.StatusOK, gin.H{
 				"code": http.StatusOK,
 				"success": false,
-				"message": "Sorry my friend, Email is not in a valid format.",
+				"message": "Email is not in a valid format.",
 			})
 			return
-		} else {
-			log.Println("is valid email", isValidEmail, userFromRequest.Email)
 		}
 		
 		// Execute the query
@@ -96,7 +78,7 @@ func ValidateUserLoginHandler(genzDB *sql.DB) gin.HandlerFunc {
 			ctx.JSON(http.StatusInternalServerError, gin.H{
 				"code": http.StatusInternalServerError,
 				"success": false,
-				"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
+				"message": "Sorry, Something went wrong. Our team is working on it. Please try again later.",
 			})
 			return
 		}
@@ -111,7 +93,7 @@ func ValidateUserLoginHandler(genzDB *sql.DB) gin.HandlerFunc {
 				ctx.JSON(http.StatusInternalServerError, gin.H{
 					"code": http.StatusInternalServerError,
 					"success": false,
-					"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
+					"message": "Sorry, Something went wrong. Our team is working on it. Please try again later.",
 				})
 				return
 			}
@@ -123,50 +105,50 @@ func ValidateUserLoginHandler(genzDB *sql.DB) gin.HandlerFunc {
 			ctx.JSON(http.StatusOK, gin.H{
 				"code": http.StatusOK,
 				"success": false,
-				"message": "Hi friend! looks like you have not registered yet. Please register.",
+				"message": "You have not registered yet. Please register.",
 			})
-		} else {
-			// check if user credentials match or not and send appropriate messages
-			if user.Email == userFromRequest.Email && user.Password == hashedPassword {
-				var userData users.User
-				log.Println("User credentials match",userFromRequest.Email)
-				loggedinUser, qryMatchErr := genzDB.Query("SELECT user_id, name, email FROM users WHERE email = ?;", userFromRequest.Email)
-				if qryMatchErr != nil {
-					log.Println("ERROR Function ValidateUserLogin: "+qryMatchErr.Error())
+			return
+		}
+		// check if user credentials match or not and send appropriate messages
+		if user.Email == userFromRequest.Email && user.Password == hashedPassword {
+			var userData users.User
+			log.Println("User credentials match",userFromRequest.Email)
+			loggedinUser, qryMatchErr := genzDB.Query("SELECT user_id, name, email FROM users WHERE email = ?;", userFromRequest.Email)
+			if qryMatchErr != nil {
+				log.Println("ERROR Function ValidateUserLogin: "+qryMatchErr.Error())
+				ctx.JSON(http.StatusInternalServerError, gin.H{
+					"code": http.StatusInternalServerError,
+					"success": false,
+					"message": "Sorry, Something went wrong. Our team is working on it. Please try again later.",
+				})
+				return
+			}
+			for loggedinUser.Next() {
+				loggedinUserErr := loggedinUser.Scan(&userData.UserId, &userData.Name, &userData.Email)
+				if loggedinUserErr != nil {
+					log.Println("ERROR Function ValidateUserLogin: "+loggedinUserErr.Error())
 					ctx.JSON(http.StatusInternalServerError, gin.H{
 						"code": http.StatusInternalServerError,
 						"success": false,
-						"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
+						"message": "Sorry, Something went wrong. Our team is working on it. Please try again later.",
 					})
 					return
 				}
-				for loggedinUser.Next() {
-					loggedinUserErr := loggedinUser.Scan(&userData.UserId, &userData.Name, &userData.Email)
-					if loggedinUserErr != nil {
-						log.Println("ERROR Function ValidateUserLogin: "+loggedinUserErr.Error())
-						ctx.JSON(http.StatusInternalServerError, gin.H{
-							"code": http.StatusInternalServerError,
-							"success": false,
-							"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
-						})
-						return
-					}
-				}
-				ctx.JSON(http.StatusOK, gin.H{
-					"code": http.StatusOK,
-					"success": true,
-					"data": userData,
-					"message": "You are now logged in. You will soon be redirected.",
-				})
-			} else {
-				log.Println("User credentials don't match",userFromRequest.Email)
-				ctx.JSON(http.StatusOK, gin.H{
-					"code": http.StatusOK,
-					"success": false,
-					"message": "Incorrect email or password.",
-				})
 			}
+			ctx.JSON(http.StatusOK, gin.H{
+				"code": http.StatusOK,
+				"success": true,
+				"data": userData,
+				"message": "You are now logged in. You will soon be redirected.",
+			})
+			return
 		}
+
+		ctx.JSON(http.StatusOK, gin.H{
+			"code": http.StatusOK,
+			"success": false,
+			"message": "Incorrect email or password.",
+		})
 	}
 
 	return gin.HandlerFunc(ValidateUserLogin)
@@ -175,116 +157,95 @@ func ValidateUserLoginHandler(genzDB *sql.DB) gin.HandlerFunc {
 func UserRegisterHandler(genzDB *sql.DB) gin.HandlerFunc {
 	
 	UserRegister := func(ctx *gin.Context) {
-
-		var userFromRequest RegisterStruct
-		var xGenzToken string 
-		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
-
-		if !ok {
-			log.Println("Token not exists.")
-			ctx.JSON(http.StatusOK, gin.H {
+		isValidToken, msg := verification.VerifyInternalKey(ctx)
+		if !isValidToken {
+			ctx.JSON(http.StatusOK, gin.H{
 				"code": http.StatusOK,
 				"success": false,
-				"message": "Sorry my friend, Invalid request. We'll fix it ASAP. Please refresh the page or try again later.",
+				"message": msg,
 			})
-		} else {
-			xGenzToken = xGenzTokenArr[0]
-			ctx.ShouldBindJSON(&userFromRequest)
-
-			if X_GENZ_TOKEN != xGenzToken {
-				log.Println("ERROR Function UserRegister: Invalid security key", userFromRequest.Email)
-				ctx.JSON(http.StatusOK, gin.H{
-					"code": http.StatusOK,
-					"success": false,
-					"message": "Sorry my friend, Invalid security key. We'll fix it ASAP. Please refresh the page or try again later.",
-				})
-			} else {
-				isCodeVerified, message := verifyCode(genzDB, userFromRequest.Email, userFromRequest.VerificationCode)
-				if !isCodeVerified {
-					ctx.JSON(http.StatusOK, gin.H{
-						"code": http.StatusOK,
-						"success": false,
-						"message": message,
-					})
-					return
-				}
-
-				// validate email and hash the password
-				isValidEmail, isValidEmailErr := validations.ValidateUserEmail(userFromRequest.Email)
-				isUserExists := checkUserExists(genzDB, userFromRequest.Email)
-				if isUserExists {
-					log.Println("User already exists", userFromRequest.Email)
-					ctx.JSON(http.StatusOK, gin.H{
-						"code": http.StatusOK,
-						"success": false,
-						"message": "User already exists.",
-					})
-				} else {
-					log.Println("Registering... user", userFromRequest.Email)
-					hashedPassword := hashing.HashUserPassword(userFromRequest.Password)
-					if isValidEmailErr != nil {
-						log.Println("ERROR Function UserRegister: ", isValidEmailErr.Error(), userFromRequest.Email)
-						ctx.JSON(http.StatusOK, gin.H{
-							"code": http.StatusOK,
-							"success": false,
-							"message": "Sorry my friend, Email is not in a valid format.",
-						})
-					} else {
-						log.Println("is valid email", isValidEmail, userFromRequest.Email)
-						userId, generateIdErr := generateUserId(genzDB)
-						if generateIdErr != nil {
-							log.Println("ERROR Function UserRegister: USER ID generation error", generateIdErr.Error())
-							ctx.JSON(http.StatusInternalServerError, gin.H{
-								"code": http.StatusInternalServerError,
-								"success": false,
-								"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
-							})
-						} else {
-							log.Println("Generated userid: ", userId)
-							// Execute the query
-							
-							insertResults, qryErr := genzDB.ExecContext(ctx, "INSERT INTO users VALUES(?, ?, ?, ?, ?);", userId, userFromRequest.Name, 
-							userFromRequest.Email, hashedPassword, "{\"about\": \"\", \"contact\": \"{}\"}")
-							if qryErr != nil {
-								log.Println("ERROR Function UserRegister: "+qryErr.Error())
-								ctx.JSON(http.StatusInternalServerError, gin.H{
-									"code": http.StatusInternalServerError,
-									"success": false,
-									"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
-								})
-							} else {
-								rowsAffected, rowsAffectedErr := insertResults.RowsAffected()
-								if rowsAffectedErr != nil {
-									log.Fatal("ERROR Function UserRegister: ", rowsAffectedErr.Error())
-									ctx.JSON(http.StatusInternalServerError, gin.H{
-										"code": http.StatusInternalServerError,
-										"success": false,
-										"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
-									})
-								} else {
-									if rowsAffected > 0 {
-										log.Println("User registration successfull", userFromRequest.Email)
-										ctx.JSON(http.StatusOK, gin.H{
-											"code": http.StatusOK,
-											"success": true,
-											"message": "User registration successfull.",
-										})
-									} else {
-										ctx.JSON(http.StatusOK, gin.H{
-											"code": http.StatusOK,
-											"success": false,
-											"message": "User registration failed.",
-										})
-									}
-								}
-									
-							}
-						}
-						
-					}
-				}
-			}
+			return
 		}
+		var userFromRequest RegisterStruct
+		ctx.ShouldBindJSON(&userFromRequest)
+		isCodeVerified, message := verifyCode(genzDB, userFromRequest.Email, userFromRequest.VerificationCode)
+		if !isCodeVerified {
+			ctx.JSON(http.StatusOK, gin.H{
+				"code": http.StatusOK,
+				"success": false,
+				"message": message,
+			})
+			return
+		}
+
+		// validate email and hash the password
+		isValidEmail, isValidEmailErr := validations.ValidateUserEmail(userFromRequest.Email)
+		isUserExists := checkUserExists(genzDB, userFromRequest.Email)
+		if isUserExists {
+			log.Println("User already exists", userFromRequest.Email)
+			ctx.JSON(http.StatusOK, gin.H{
+				"code": http.StatusOK,
+				"success": false,
+				"message": "User already exists.",
+			})
+			return
+		}
+		hashedPassword := hashing.HashUserPassword(userFromRequest.Password)
+		if !isValidEmail && isValidEmailErr != nil {
+			log.Println("ERROR Function UserRegister: ", isValidEmailErr.Error(), userFromRequest.Email)
+			ctx.JSON(http.StatusOK, gin.H{
+				"code": http.StatusOK,
+				"success": false,
+				"message": "Email is not in a valid format.",
+			})
+			return
+		}
+		userId, generateIdErr := generateUserId(genzDB)
+		if generateIdErr != nil {
+			log.Println("ERROR Function UserRegister: USER ID generation error", generateIdErr.Error())
+			ctx.JSON(http.StatusInternalServerError, gin.H{
+				"code": http.StatusInternalServerError,
+				"success": false,
+				"message": "Sorry, Something went wrong. Our team is working on it. Please try again later.",
+			})
+		}
+		// Execute the query					
+		insertResults, qryErr := genzDB.ExecContext(ctx, "INSERT INTO users VALUES(?, ?, ?, ?, ?);", userId, userFromRequest.Name, 
+		userFromRequest.Email, hashedPassword, "{\"about\": \"\", \"contact\": \"{}\"}")
+		if qryErr != nil {
+			log.Println("ERROR Function UserRegister: "+qryErr.Error())
+			ctx.JSON(http.StatusInternalServerError, gin.H{
+				"code": http.StatusInternalServerError,
+				"success": false,
+				"message": "Sorry, Something went wrong. Our team is working on it. Please try again later.",
+			})
+			return
+		}
+
+		rowsAffected, rowsAffectedErr := insertResults.RowsAffected()
+		if rowsAffectedErr != nil {
+			log.Fatal("ERROR Function UserRegister: ", rowsAffectedErr.Error())
+			ctx.JSON(http.StatusInternalServerError, gin.H{
+				"code": http.StatusInternalServerError,
+				"success": false,
+				"message": "Sorry, Something went wrong. Our team is working on it. Please try again later.",
+			})
+			return
+		}
+		if rowsAffected > 0 {
+			log.Println("User registration successfull", userFromRequest.Email)
+			ctx.JSON(http.StatusOK, gin.H{
+				"code": http.StatusOK,
+				"success": true,
+				"message": "User registration successfull.",
+			})
+			return
+		}
+		ctx.JSON(http.StatusOK, gin.H{
+			"code": http.StatusOK,
+			"success": false,
+			"message": "User registration failed.",
+		})
 
 	}
 
@@ -295,58 +256,43 @@ func UserRegisterHandler(genzDB *sql.DB) gin.HandlerFunc {
 func GetUserByIdHandler(genzDB *sql.DB) gin.HandlerFunc {
 
 	GetUserById := func(ctx *gin.Context) {
-		
-
-		var xGenzToken string
-		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
-		if !ok {
-			log.Println("Token not exists.")
-			ctx.JSON(http.StatusOK, gin.H {
+		isValidToken, msg := verification.VerifyInternalKey(ctx)
+		if !isValidToken {
+			ctx.JSON(http.StatusOK, gin.H{
 				"code": http.StatusOK,
 				"success": false,
-				"message": "Sorry my friend, Invalid request. We'll fix it ASAP. Please refresh the page or try again later.",
+				"message": msg,
 			})
-		} else {
-			queryParams := ctx.Request.URL.Query()
-			userIdFromReq := queryParams["userId"][0]
-			xGenzToken = xGenzTokenArr[0]
-			var user users.User
-			if X_GENZ_TOKEN != xGenzToken {
-				log.Println("ERROR Function GetUserById: Invalid security key", userIdFromReq)
+			return
+		}
+
+		queryParams := ctx.Request.URL.Query()
+		userIdFromReq := queryParams["userId"][0]
+		var user users.User 
+		getUserResultsErr := genzDB.QueryRow("SELECT user_id, name, email, profile FROM users WHERE user_id=?;", userIdFromReq).Scan(&user.UserId, &user.Name, &user.Email, &user.Profile)
+		switch getUserResultsErr {
+			case sql.ErrNoRows:
+				log.Println("No rows were returned!", userIdFromReq)
 				ctx.JSON(http.StatusOK, gin.H{
 					"code": http.StatusOK,
 					"success": false,
-					"message": "Sorry my friend, Invalid security key. We'll fix it ASAP. Please refresh the page or try again later.",
+					"message": "User not found",
 				})
-			} else {
-				getUserResultsErr := genzDB.QueryRow("SELECT user_id, name, email, profile FROM users WHERE user_id=?;", userIdFromReq).Scan(&user.UserId, &user.Name, &user.Email, &user.Profile)
-				switch getUserResultsErr {
-					case sql.ErrNoRows:
-						log.Println("No rows were returned!", userIdFromReq)
-						ctx.JSON(http.StatusOK, gin.H{
-							"code": http.StatusOK,
-							"success": false,
-							"message": "User not found",
-						})
-					case nil:
-						log.Println("User fetched for profile", userIdFromReq)
-						ctx.JSON(http.StatusOK, gin.H{
-							"code": http.StatusOK,
-							"success": true,
-							"data": user,
-						})
-					default:
-						log.Println("ERROR Function GetUserById: "+getUserResultsErr.Error())
-						ctx.JSON(http.StatusInternalServerError, gin.H{
-							"code": http.StatusInternalServerError,
-							"success": false,
-							"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
-						})
-				}
-				
-			}
+			case nil:
+				log.Println("User fetched for profile", userIdFromReq)
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": true,
+					"data": user,
+				})
+			default:
+				log.Println("ERROR Function GetUserById: "+getUserResultsErr.Error())
+				ctx.JSON(http.StatusInternalServerError, gin.H{
+					"code": http.StatusInternalServerError,
+					"success": false,
+					"message": "Sorry, Something went wrong. Our team is working on it. Please try again later.",
+				})
 		}
-
 	}
 
 	return gin.HandlerFunc(GetUserById)
@@ -356,46 +302,33 @@ func CheckUserByEmailHandler(genzDB *sql.DB) gin.HandlerFunc {
 
 	CheckUserByEmail := func(ctx *gin.Context) {
 		
-
-		var xGenzToken string
-		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
-		if !ok {
-			log.Println("Token not exists.")
+		isValidToken, msg := verification.VerifyInternalKey(ctx)
+		if !isValidToken {
+			ctx.JSON(http.StatusOK, gin.H{
+				"code": http.StatusOK,
+				"success": false,
+				"message": msg,
+			})
+			return
+		}
+		var userFromRequest users.User
+		ctx.ShouldBindJSON(&userFromRequest) 
+		isExists := checkUserExists(genzDB, userFromRequest.Email)
+		if isExists {
+			log.Println("User already exist")
 			ctx.JSON(http.StatusOK, gin.H {
 				"code": http.StatusOK,
 				"success": false,
-				"message": "Sorry dude, something went wrong. Our team is working on it. Please try again later.",
+				"message": "User already exist. Please sign in to continue.",
 			})
-		} else {
-			xGenzToken = xGenzTokenArr[0]
-			var userFromRequest users.User
-			ctx.ShouldBindJSON(&userFromRequest)
-			if X_GENZ_TOKEN != xGenzToken {
-				log.Println("ERROR Function GetUserByEmail: Invalid security key", userFromRequest.Email)
-				ctx.JSON(http.StatusOK, gin.H{
-					"code": http.StatusOK,
-					"success": false,
-					"message": "Sorry dude, something went wrong. Our team is working on it. Please try again later.",
-				})
-			} else {
-				isExists := checkUserExists(genzDB, userFromRequest.Email)
-				if isExists {
-					log.Println("User already exist")
-					ctx.JSON(http.StatusOK, gin.H {
-						"code": http.StatusOK,
-						"success": false,
-						"message": "User already exist. Please sign in to continue.",
-					})
-				} else {
-					ctx.JSON(http.StatusOK, gin.H {
-						"code": http.StatusOK,
-						"success": true,
-						"message": "",
-					})
-				} 
-			}
-
+			return
 		}
+		ctx.JSON(http.StatusOK, gin.H {
+			"code": http.StatusOK,
+			"success": true,
+			"message": "",
+		})
+				 
 
 	}
 
@@ -405,111 +338,100 @@ func CheckUserByEmailHandler(genzDB *sql.DB) gin.HandlerFunc {
 func SendVerificationCodeHandler(genzDB *sql.DB) gin.HandlerFunc {
 
 	sendVerificationCode := func(ctx *gin.Context) {
-		var xGenzToken string
-		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
-		if !ok {
-			log.Println("Token not exists.")
-			ctx.JSON(http.StatusOK, gin.H {
+		isValidToken, msg := verification.VerifyInternalKey(ctx)
+		if !isValidToken {
+			ctx.JSON(http.StatusOK, gin.H{
 				"code": http.StatusOK,
 				"success": false,
-				"message": "Sorry dude, something went wrong. Our team is working on it. Please try again later.",
+				"message": msg,
 			})
-		} else {
-			xGenzToken = xGenzTokenArr[0]
-			var userFromRequest users.User
-			ctx.ShouldBindJSON(&userFromRequest)
-			if X_GENZ_TOKEN != xGenzToken {
-				log.Println("ERROR Function sendVerificationCode: Invalid security key", userFromRequest.Email)
+			return
+		}
+		var userFromRequest users.User
+		ctx.ShouldBindJSON(&userFromRequest)
+
+		isUserExist := checkUserExistsForVerification(genzDB, userFromRequest.Email)
+		if isUserExist {
+			var codeCount int
+			getCountQry := "SELECT code_sent_count FROM user_verification_code WHERE email=?;"
+			_ = genzDB.QueryRow(getCountQry, userFromRequest.Email).Scan(&codeCount)
+			if codeCount >= 2 {
 				ctx.JSON(http.StatusOK, gin.H{
 					"code": http.StatusOK,
 					"success": false,
-					"message": "Sorry dude, something went wrong. Our team is working on it. Please try again later.",
+					"message": "You have exceeded the maximum number of attempts. Please try again later.",
 				})
-			} else {
-				log.Println("Send verification code.")
-				isUserExist := checkUserExistsForVerification(genzDB, userFromRequest.Email)
-				if isUserExist {
-					var codeCount int
-					getCountQry := "SELECT code_sent_count FROM user_verification_code WHERE email=?;"
-					_ = genzDB.QueryRow(getCountQry, userFromRequest.Email).Scan(&codeCount)
-					log.Println(codeCount)
-					if codeCount >= 2 {
-						ctx.JSON(http.StatusOK, gin.H{
-							"code": http.StatusOK,
-							"success": false,
-							"message": "You have exceeded the maximum number of attempts. Please try again later.",
-						})
-						return
-					}
-
-					// generate the verification code
-					verificationCode, verificationCodeErr := verification.GenerateSixDigitCode()
-					if verificationCodeErr != nil {
-						ctx.JSON(http.StatusOK, gin.H{
-							"code": http.StatusOK,
-							"success": false,
-							"message": "Sorry, something went wrong. Our team is working on it. Please, try again later.",
-						})
-						return
-					}
-					timeNow := time.Now()
-					updateVerificationCodeQry := "UPDATE user_verification_code SET verification_code=?, code_sent_count=?, created_at=? WHERE email=?;"
-					_, updateVerificationCodeQryErr := genzDB.Exec(updateVerificationCodeQry, verificationCode, codeCount + 1, timeNow, userFromRequest.Email)
-					if updateVerificationCodeQryErr != nil {
-						log.Println("Update verification code error: ", updateVerificationCodeQryErr.Error())
-						ctx.JSON(http.StatusOK, gin.H {
-							"code": http.StatusOK,
-							"success": false,
-							"message": "Sorry, something went wrong. Our team is working on it. Please, try again later.",
-						})
-						return
-					}
-					isSent := sendVerificationCode(verificationCode, userFromRequest.Email)
-					if isSent {
-						ctx.JSON(http.StatusOK, gin.H{
-							"code": http.StatusOK,
-							"success": true,
-							"message": "A new verification code has been sent to your email. Please check it.",
-							"data": codeCount,
-						})
-					} else {
-						ctx.JSON(http.StatusOK, gin.H{
-							"code": http.StatusOK,
-							"success": false,
-							"message": "Sorry something went wrong. Our team is working on it. Please try again later.",
-						})
-					}
-				} else {
-					timeNow := time.Now()
-					verificationCode, verificationCodeErr := verification.GenerateSixDigitCode()
-					if verificationCodeErr != nil {
-						ctx.JSON(http.StatusOK, gin.H{
-							"code": http.StatusOK,
-							"success": false,
-							"message": "Sorry, something went wrong. Our team is working on it. Please, try again later.",
-						})
-						return
-					}
-					_, _ = genzDB.Exec("INSERT INTO user_verification_code VALUES(?, ?, ?, ?);", verificationCode, userFromRequest.Email, timeNow, 0)
-					isSent := sendVerificationCode(verificationCode, userFromRequest.Email)
-					if isSent {
-						ctx.JSON(http.StatusOK, gin.H{
-							"code": http.StatusOK,
-							"success": true,
-							"message": "verification code has been sent to your account.",
-							"data": timeNow,
-						})
-					} else {
-						ctx.JSON(http.StatusOK, gin.H{
-							"code": http.StatusOK,
-							"success": false,
-							"message": "Sorry, Something went wrong. Our team is working on it. Please try again later.",
-						})
-					}
-
-				}
+				return
 			}
+
+			// generate the verification code
+			verificationCode, verificationCodeErr := verification.GenerateSixDigitCode()
+			if verificationCodeErr != nil {
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": false,
+					"message": "Sorry, something went wrong. Our team is working on it. Please, try again later.",
+				})
+				return
+			}
+			timeNow := time.Now()
+			updateVerificationCodeQry := "UPDATE user_verification_code SET verification_code=?, code_sent_count=?, created_at=? WHERE email=?;"
+			_, updateVerificationCodeQryErr := genzDB.Exec(updateVerificationCodeQry, verificationCode, codeCount + 1, timeNow, userFromRequest.Email)
+			if updateVerificationCodeQryErr != nil {
+				log.Println("Update verification code error: ", updateVerificationCodeQryErr.Error())
+				ctx.JSON(http.StatusOK, gin.H {
+					"code": http.StatusOK,
+					"success": false,
+					"message": "Sorry, something went wrong. Our team is working on it. Please, try again later.",
+				})
+				return
+			}
+			isSent := sendVerificationCode(verificationCode, userFromRequest.Email)
+			if isSent {
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": true,
+					"message": "A new verification code has been sent to your email. Please check it.",
+					"data": codeCount,
+				})
+				return
+			} 
+			ctx.JSON(http.StatusOK, gin.H{
+				"code": http.StatusOK,
+				"success": false,
+				"message": "Sorry something went wrong. Our team is working on it. Please try again later.",
+			})
+			return
+			
+		} 
+		timeNow := time.Now()
+		verificationCode, verificationCodeErr := verification.GenerateSixDigitCode()
+		if verificationCodeErr != nil {
+			ctx.JSON(http.StatusOK, gin.H{
+				"code": http.StatusOK,
+				"success": false,
+				"message": "Sorry, something went wrong. Our team is working on it. Please, try again later.",
+			})
+			return
 		}
+		_, _ = genzDB.Exec("INSERT INTO user_verification_code VALUES(?, ?, ?, ?);", verificationCode, userFromRequest.Email, timeNow, 0)
+		isSent := sendVerificationCode(verificationCode, userFromRequest.Email)
+		if isSent {
+			ctx.JSON(http.StatusOK, gin.H{
+				"code": http.StatusOK,
+				"success": true,
+				"message": "verification code has been sent to your account.",
+				"data": timeNow,
+			})
+			return
+		} 
+		ctx.JSON(http.StatusOK, gin.H{
+			"code": http.StatusOK,
+			"success": false,
+			"message": "Sorry, Something went wrong. Our team is working on it. Please try again later.",
+		})
+					
+		
 	}
 
 	return gin.HandlerFunc(sendVerificationCode)
@@ -519,66 +441,54 @@ func SendVerificationCodeHandler(genzDB *sql.DB) gin.HandlerFunc {
 func EditUserNameHandler(genzDB *sql.DB) gin.HandlerFunc {
 	
 	EditUserName := func(ctx *gin.Context) {
-		var xGenzToken string
-		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
-		var userFromRequest users.User
-		if !ok {
-			log.Println("Token not exists.")
-			ctx.JSON(http.StatusOK, gin.H {
+		isValidToken, msg := verification.VerifyInternalKey(ctx)
+		if !isValidToken {
+			ctx.JSON(http.StatusOK, gin.H{
 				"code": http.StatusOK,
 				"success": false,
-				"message": "Sorry my friend, Invalid request. We'll fix it ASAP. Please refresh the page or try again later.",
+				"message": msg,
 			})
-		} else {
-			ctx.ShouldBindJSON(&userFromRequest)
-			xGenzToken = xGenzTokenArr[0]
-			var user users.User
-			if X_GENZ_TOKEN != xGenzToken {
-				log.Println("ERROR Function EditUserName: Invalid security key", userFromRequest.UserId)
+			return
+		}
+		var userFromRequest users.User
+		ctx.ShouldBindJSON(&userFromRequest)
+		var user users.User
+			
+		getUserResultsErr := genzDB.QueryRow("SELECT user_id FROM users WHERE user_id=?;", userFromRequest.UserId).Scan(&user.UserId)
+		switch getUserResultsErr {
+			case sql.ErrNoRows:
+				log.Println("No rows were returned!", userFromRequest.UserId)
 				ctx.JSON(http.StatusOK, gin.H{
 					"code": http.StatusOK,
 					"success": false,
-					"message": "Sorry my friend, Invalid security key. We'll fix it ASAP. Please refresh the page or try again later.",
+					"message": "User not found",
 				})
-			} else {
-				getUserResultsErr := genzDB.QueryRow("SELECT user_id FROM users WHERE user_id=?;", userFromRequest.UserId).Scan(&user.UserId)
-				switch getUserResultsErr {
-					case sql.ErrNoRows:
-						log.Println("No rows were returned!", userFromRequest.UserId)
-						ctx.JSON(http.StatusOK, gin.H{
-							"code": http.StatusOK,
-							"success": false,
-							"message": "User not found",
-						})
-					case nil:
-						sqlUpdateUserNameQuery := "UPDATE users SET name=? WHERE user_id=?;"
-						_, updateQueryError := genzDB.Exec(sqlUpdateUserNameQuery, userFromRequest.Name, userFromRequest.UserId)
-						if updateQueryError != nil {
-							log.Println("ERROR function EditUserName: "+updateQueryError.Error())
-							ctx.JSON(http.StatusOK, gin.H{
-								"code": http.StatusOK,
-								"success": true,
-								"message": "Failed to update username.",
-							})
-						} else {
-							ctx.JSON(http.StatusOK, gin.H{
-								"code": http.StatusOK,
-								"success": true,
-								"message": "Username updated.",
-							})
-						}
-					default:
-						log.Println("ERROR Function EditUserName: "+getUserResultsErr.Error())
-						ctx.JSON(http.StatusInternalServerError, gin.H{
-							"code": http.StatusInternalServerError,
-							"success": false,
-							"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
-						})
-				}
-
-			}
-
-		}
+			case nil:
+				sqlUpdateUserNameQuery := "UPDATE users SET name=? WHERE user_id=?;"
+				_, updateQueryError := genzDB.Exec(sqlUpdateUserNameQuery, userFromRequest.Name, userFromRequest.UserId)
+				if updateQueryError != nil {
+					log.Println("ERROR function EditUserName: "+updateQueryError.Error())
+					ctx.JSON(http.StatusOK, gin.H{
+						"code": http.StatusOK,
+						"success": true,
+						"message": "Failed to update username.",
+					})
+					return
+				} 
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": true,
+					"message": "Username updated.",
+				})
+				
+			default:
+				log.Println("ERROR Function EditUserName: "+getUserResultsErr.Error())
+				ctx.JSON(http.StatusInternalServerError, gin.H{
+					"code": http.StatusInternalServerError,
+					"success": false,
+					"message": "Sorry, Something went wrong. Our team is working on it. Please try again later.",
+				})
+		}		
 	}
 
 	return gin.HandlerFunc(EditUserName)
@@ -589,67 +499,56 @@ func EditAboutYouHandler(genzDB *sql.DB) gin.HandlerFunc {
 	
 	EditAboutYou := func(ctx *gin.Context) {
 
-		var xGenzToken string
-		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
-		var dataFromRequest AboutYouStruct
-		if !ok {
-			log.Println("Token not exists.")
-			ctx.JSON(http.StatusOK, gin.H {
+		isValidToken, msg := verification.VerifyInternalKey(ctx)
+		if !isValidToken {
+			ctx.JSON(http.StatusOK, gin.H{
 				"code": http.StatusOK,
 				"success": false,
-				"message": "Sorry my friend, Invalid request. We'll fix it ASAP. Please refresh the page or try again later.",
+				"message": msg,
 			})
-		} else {
+			return
+		}
 
-			ctx.ShouldBindJSON(&dataFromRequest)
-			xGenzToken = xGenzTokenArr[0]
-			var user users.User
-			if X_GENZ_TOKEN != xGenzToken {
-				log.Println("ERROR Function EditAboutYou: Invalid security key", dataFromRequest.UserId)
+		var dataFromRequest AboutYouStruct
+		ctx.ShouldBindJSON(&dataFromRequest)
+		var user users.User
+			
+
+		getUserResultsErr := genzDB.QueryRow("SELECT user_id FROM users WHERE user_id=?;", dataFromRequest.UserId).Scan(&user.UserId)
+		switch getUserResultsErr {
+			case sql.ErrNoRows:
+				log.Println("No rows were returned!", dataFromRequest.UserId)
 				ctx.JSON(http.StatusOK, gin.H{
 					"code": http.StatusOK,
 					"success": false,
-					"message": "Sorry my friend, Invalid security key. We'll fix it ASAP. Please refresh the page or try again later.",
+					"message": "User not found",
 				})
-			} else {
+			case nil:
+				sqlUpdateAboutYouQuery := "UPDATE users SET profile=JSON_SET(profile, \"$.about\", ?) WHERE user_id=?"
+				_, updateQueryError := genzDB.Exec(sqlUpdateAboutYouQuery, dataFromRequest.AboutYou, dataFromRequest.UserId)
+				if updateQueryError != nil {
+					log.Println("ERROR function EditAboutYou: "+updateQueryError.Error())
+					ctx.JSON(http.StatusOK, gin.H{
+						"code": http.StatusOK,
+						"success": true,
+						"message": "Failed to update.",
+					})
+					return
+				}
 
-				getUserResultsErr := genzDB.QueryRow("SELECT user_id FROM users WHERE user_id=?;", dataFromRequest.UserId).Scan(&user.UserId)
-				switch getUserResultsErr {
-					case sql.ErrNoRows:
-						log.Println("No rows were returned!", dataFromRequest.UserId)
-						ctx.JSON(http.StatusOK, gin.H{
-							"code": http.StatusOK,
-							"success": false,
-							"message": "User not found",
-						})
-					case nil:
-						sqlUpdateAboutYouQuery := "UPDATE users SET profile=JSON_SET(profile, \"$.about\", ?) WHERE user_id=?"
-						_, updateQueryError := genzDB.Exec(sqlUpdateAboutYouQuery, dataFromRequest.AboutYou, dataFromRequest.UserId)
-						if updateQueryError != nil {
-							log.Println("ERROR function EditAboutYou: "+updateQueryError.Error())
-							ctx.JSON(http.StatusOK, gin.H{
-								"code": http.StatusOK,
-								"success": true,
-								"message": "Failed to update.",
-							})
-						} else {
-							ctx.JSON(http.StatusOK, gin.H{
-								"code": http.StatusOK,
-								"success": true,
-								"message": "Updated successfully.",
-							})
-						}
-					default:
-						log.Println("ERROR Function EditAboutYou: "+getUserResultsErr.Error())
-						ctx.JSON(http.StatusInternalServerError, gin.H{
-							"code": http.StatusInternalServerError,
-							"success": false,
-							"message": "Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.",
-						})
-					}
-
-			}
-
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": true,
+					"message": "Updated successfully.",
+				})
+				
+			default:
+				log.Println("ERROR Function EditAboutYou: "+getUserResultsErr.Error())
+				ctx.JSON(http.StatusInternalServerError, gin.H{
+					"code": http.StatusInternalServerError,
+					"success": false,
+					"message": "Sorry, Something went wrong. Our team is working on it. Please try again later.",
+				})
 		}
 
 	}
@@ -660,79 +559,70 @@ func EditAboutYouHandler(genzDB *sql.DB) gin.HandlerFunc {
 func ChangePasswordHandler(genzDB *sql.DB) gin.HandlerFunc {
 
 	ChangePassword := func(ctx *gin.Context) {
-
-		var xGenzToken string
-		xGenzTokenArr, ok := ctx.Request.Header["X-Genz-Token"];
-		var dataFromRequest ChangePasswordStruct
-		if !ok {
-			log.Println("Token not exists.")
-			ctx.JSON(http.StatusOK, gin.H {
+		isValidToken, msg := verification.VerifyInternalKey(ctx)
+		if !isValidToken {
+			ctx.JSON(http.StatusOK, gin.H{
 				"code": http.StatusOK,
 				"success": false,
-				"message": "Sorry my friend, Invalid request. We'll fix it ASAP. Please refresh the page or try again later.",
+				"message": msg,
 			})
-		} else {
-			ctx.ShouldBindJSON(&dataFromRequest)
-			xGenzToken = xGenzTokenArr[0]
-			var user users.User
-			if X_GENZ_TOKEN != xGenzToken {
-				log.Println("ERROR Function EditAboutYou: Invalid security key", dataFromRequest.UserId)
+			return
+		}
+
+		var dataFromRequest ChangePasswordStruct
+		ctx.ShouldBindJSON(&dataFromRequest)
+		var user users.User
+
+		getUserResultsErr := genzDB.QueryRow("SELECT password FROM users WHERE user_id=?;", dataFromRequest.UserId).Scan(&user.Password)
+		switch getUserResultsErr {
+			case sql.ErrNoRows:
+				log.Println("No rows were returned!", dataFromRequest.UserId)
 				ctx.JSON(http.StatusOK, gin.H{
 					"code": http.StatusOK,
 					"success": false,
-					"message": "Sorry my friend, Invalid security key. We'll fix it ASAP. Please refresh the page or try again later.",
+					"message": "User not found",
 				})
-			} else {
+				return
+			
+			case nil:
+				hashedOldPassword := hashing.HashUserPassword(dataFromRequest.OldPasswd)
+				if hashedOldPassword != user.Password {
+					log.Println("Invalid old password", dataFromRequest.UserId)
+					ctx.JSON(http.StatusOK, gin.H{
+						"code": http.StatusOK,
+						"success": false,
+						"message": "invalid old password",
+					})
+				} else if dataFromRequest.NewPasswd != dataFromRequest.ConfirmPasswd {
+					log.Println("Password do not match", dataFromRequest.UserId)
+					ctx.JSON(http.StatusOK, gin.H{
+						"code": http.StatusOK,
+						"success": false,
+						"message": "Password do not match",
+					})
+					return
+				}
+				hashedNewPasswd := hashing.HashUserPassword(dataFromRequest.NewPasswd)
+				updatePasswdQry := "UPDATE users SET password=? WHERE user_id=?"
+				_, updatePasswdQryErr := genzDB.Exec(updatePasswdQry, hashedNewPasswd, dataFromRequest.UserId)
+				if updatePasswdQryErr != nil {
+					log.Println("Failed to update password", dataFromRequest.UserId)
+					ctx.JSON(http.StatusOK, gin.H{
+						"code": http.StatusOK,
+						"success": false,
+						"message": "Failed to update password. Please, try again later.",
+					})
+					return
+				}
 
-				getUserResultsErr := genzDB.QueryRow("SELECT password FROM users WHERE user_id=?;", dataFromRequest.UserId).Scan(&user.Password)
-				switch getUserResultsErr {
-					case sql.ErrNoRows:
-						log.Println("No rows were returned!", dataFromRequest.UserId)
-						ctx.JSON(http.StatusOK, gin.H{
-							"code": http.StatusOK,
-							"success": false,
-							"message": "User not found",
-						})
+				log.Println("Password updated successfully", dataFromRequest.UserId)
+				ctx.JSON(http.StatusOK, gin.H{
+					"code": http.StatusOK,
+					"success": true,
+					"message": "Password updated successfully",
+				})
 					
-					case nil:
-						hashedOldPassword := hashing.HashUserPassword(dataFromRequest.OldPasswd)
-						if hashedOldPassword != user.Password {
-							log.Println("Invalid old password", dataFromRequest.UserId)
-							ctx.JSON(http.StatusOK, gin.H{
-								"code": http.StatusOK,
-								"success": false,
-								"message": "invalid old password",
-							})
-						} else if dataFromRequest.NewPasswd != dataFromRequest.ConfirmPasswd {
-							log.Println("Password do not match", dataFromRequest.UserId)
-							ctx.JSON(http.StatusOK, gin.H{
-								"code": http.StatusOK,
-								"success": false,
-								"message": "Password do not match",
-							})
-						} else {
-							hashedNewPasswd := hashing.HashUserPassword(dataFromRequest.NewPasswd)
-							updatePasswdQry := "UPDATE users SET password=? WHERE user_id=?"
-							_, updatePasswdQryErr := genzDB.Exec(updatePasswdQry, hashedNewPasswd, dataFromRequest.UserId)
-							if updatePasswdQryErr != nil {
-								log.Println("Failed to update password", dataFromRequest.UserId)
-								ctx.JSON(http.StatusOK, gin.H{
-									"code": http.StatusOK,
-									"success": false,
-									"message": "Failed to update password. Please, try again later.",
-								})
-							} else {
-								log.Println("Password updated successfully", dataFromRequest.UserId)
-								ctx.JSON(http.StatusOK, gin.H{
-									"code": http.StatusOK,
-									"success": true,
-									"message": "Password updated successfully",
-								})
-							}
-						}
-					}
-				}						
-
+				
 			}
 		}
 
@@ -749,20 +639,20 @@ func generateUserId(genzDB *sql.DB) (string, error) {
 	queryResults, qryErr := genzDB.Query(query)
 	if qryErr != nil {
 		log.Println("ERROR Function generateUserId: "+qryErr.Error())
-		return "", errors.New("Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.")
+		return "", errors.New("Sorry, Something went wrong. Our team is working on it. Please try again later.")
 	}
 	for queryResults.Next() {
 		queryResultsErr := queryResults.Scan(&user.UserId)
 		if queryResultsErr != nil {
 			log.Println("ERROR Function generateUserId: "+queryResultsErr.Error())
-			return "", errors.New("Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.")
+			return "", errors.New("Sorry, Something went wrong. Our team is working on it. Please try again later.")
 		}
 		userIdArr := strings.Split(user.UserId, "-")
 		numUserId, atoiErr := strconv.Atoi(userIdArr[1])
 
 		if atoiErr != nil {
 			log.Println("ERROR Function generateUserId: "+atoiErr.Error())
-			return "", errors.New("Sorry my friend, something went wrong on our side. Our team is working on it. Please refresh the page or try again later.")
+			return "", errors.New("Sorry, Something went wrong. Our team is working on it. Please try again later.")
 		}
 
 		if maxUserId <= numUserId {

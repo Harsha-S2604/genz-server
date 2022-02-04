@@ -24,9 +24,6 @@ type ImageForm struct {
     Image *multipart.FileHeader `form:"upload" binding:"required"`
 }
 
-var (
-	X_GENZ_TOKEN = "4439EA5BDBA8B179722265789D029477"
-)
 
 func AddBlogHandler(genzDB *sql.DB) gin.HandlerFunc {
 
@@ -479,7 +476,7 @@ func UploadStoryImageHandler(genzDB *sql.DB) gin.HandlerFunc {
 				return
 			}
 		}
-		
+
 		ctx.JSON(http.StatusOK, gin.H{
 			"code": http.StatusOK,
 			"success": false,
